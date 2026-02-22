@@ -6,7 +6,7 @@ import (
 )
 
 func PrintUsage(w io.Writer) {
-	fmt.Fprintln(w, `kdiag
+	fmt.Fprint(w, `
 
 Usage:
   kdiag inspect pod [flags] <pod_name>

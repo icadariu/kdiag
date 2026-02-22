@@ -80,7 +80,7 @@ Summary (pods per ZONE):
 ## Common flags
 
 | Flag | Short | Description |
-|------|-------|-------------|
+| ------ | ------- | ------------- |
 | `--kubeconfig <path>` | | Path to kubeconfig file |
 | `--context <name>` | | Kubernetes context to use |
 | `--namespace <ns>` | `-n` | Namespace (defaults to current context) |
