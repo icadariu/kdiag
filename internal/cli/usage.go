@@ -6,31 +6,35 @@ import (
 )
 
 func PrintUsage(w io.Writer) {
-	fmt.Fprint(w, `
+	fmt.Fprint(w, `kdiag — Kubernetes diagnostic CLI
 
 Usage:
-  kdiag inspect pod [flags] <pod_name>
-  kdiag inspect pod [flags] -l <label_selector>
-  kdiag az pods [flags] -l <label_selector>
+  kdiag inspect pod [flags] [<pod_name> | -l <selector>]
+  kdiag az pods     [flags] -l <selector>
 
-Common flags:
-  --kubeconfig <path>     Path to kubeconfig
-  --context <name>        Kube context name
-  -n, --namespace <ns>    Namespace (if omitted, uses namespace from current context like kubectl)
+inspect pod — show container state for one pod or a set of pods
+  --kubeconfig <path>         Path to kubeconfig file
+  --context <name>            Kubernetes context to use
+  --resources                 Also show CPU/memory requests and limits
+  -n, --namespace <ns>        Namespace (defaults to current context)
+  -l, --selector <expr>       Label selector; omit to inspect all pods
 
-Inspect examples:
-  kdiag inspect pod gateway-proxy-abc123
-  kdiag inspect pod -n gloo-system gateway-proxy-abc123
-  kdiag inspect pod -n gloo-system --resources gateway-proxy-abc123
-  kdiag inspect pod -n gloo-system -l 'gateway-proxy-id=gateway-proxy,gateway-proxy=live'
+az pods — show pod placement across nodes and availability zones
+  --kubeconfig <path>         Path to kubeconfig file
+  --context <name>            Kubernetes context to use
+  -n, --namespace <ns>        Namespace (defaults to current context)
+  -l, --selector <expr>       Label selector (required)
 
-AZ examples:
-  kdiag az pods -n gloo-system -l 'gateway-proxy-id=gateway-proxy,gateway-proxy=live'
+Examples:
+  kdiag inspect pod my-pod-abc123
+  kdiag inspect pod -n kube-system my-pod-abc123
+  kdiag inspect pod -n kube-system --resources my-pod-abc123
+  kdiag inspect pod -l 'app=my-app,env=prod'
+  kdiag az pods -n kube-system -l 'app=my-app'
 
 Notes:
-  - "Zone/AZ" is derived from node labels:
-      topology.kubernetes.io/zone
-    fallback:
-      failure-domain.beta.kubernetes.io/zone
+  Zone/AZ is read from node labels (in order):
+    topology.kubernetes.io/zone
+    failure-domain.beta.kubernetes.io/zone  (legacy fallback)
 `)
 }

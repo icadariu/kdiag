@@ -129,7 +129,8 @@ internal/
 
 1. Create `internal/cmd/<name>.go` and implement `Run<Name>(args []string)`
    using the same pattern as the existing commands:
-   - Parse flags with `flag.NewFlagSet`
+   - Parse flags with a `FlagSet` that supports interspersed arguments,
+     so the pod name can appear before or after flags (like `kubectl`)
    - Build a `*kube.KubeEnv` via `kube.NewKubeEnv(k)`
    - Use helpers from `internal/kube` and `internal/cli` as needed
 2. Add a `case "<name>": cmd.Run<Name>(args[1:])` branch in `main.go`
@@ -138,6 +139,48 @@ internal/
 Kubernetes-specific utility functions (zone lookup, container state decoding,
 resource extraction) belong in `internal/kube/helpers.go` so they can be
 reused across commands.
+
+---
+
+## Testing
+
+### Unit tests
+
+No cluster required. Covers pure logic: zone label lookup, container state
+decoding, resource extraction, and output formatting.
+
+```sh
+go test ./internal/...
+```
+
+The `...` wildcard is required — `./internal` alone has no Go files and will
+fail. It must recurse into the sub-packages (`cli`, `kube`).
+
+### Integration tests
+
+Requires [kind](https://kind.sigs.k8s.io) and `kubectl`. The Makefile manages
+the cluster lifecycle.
+
+```sh
+# 1. Create a kind cluster and apply test fixtures
+make cluster-up
+
+# 2. Run integration tests against it
+make test-integration
+
+# 3. Tear down when done
+make cluster-down
+```
+
+Run everything in one shot:
+
+```sh
+make cluster-up && make test && make cluster-down
+```
+
+Test fixtures live in `test/fixtures/kdiag-test.yaml` and create a dedicated
+`kdiag-test` namespace with a deployment, a static pod with known name, and a
+crashing pod to exercise different container states.
 
 ---
 

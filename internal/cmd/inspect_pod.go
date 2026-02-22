@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"github.com/spf13/pflag"
 
 	"example.com/kdiag/internal/cli"
 	"example.com/kdiag/internal/kube"
@@ -20,24 +20,22 @@ func RunInspect(args []string) {
 		os.Exit(1)
 	}
 
-	fs := flag.NewFlagSet("inspect pod", flag.ExitOnError)
+	fs := pflag.NewFlagSet("inspect pod", pflag.ExitOnError)
 	var k kube.KubeFlags
 	fs.StringVar(&k.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	fs.StringVar(&k.Context, "context", "", "kube context")
-	fs.StringVar(&k.Namespace, "namespace", "", "namespace")
-	fs.StringVar(&k.Namespace, "n", "", "namespace (shorthand)")
+	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace")
 	var showResources bool
 	fs.BoolVar(&showResources, "resources", false, "show resource requests/limits")
 	var selector string
-	fs.StringVar(&selector, "selector", "", "label selector (inspect many pods)")
-	fs.StringVar(&selector, "l", "", "label selector (inspect many pods, shorthand)")
+	fs.StringVarP(&selector, "selector", "l", "", "label selector")
 
 	_ = fs.Parse(args[1:])
 	rest := fs.Args()
 	selector = strings.TrimSpace(selector)
 
-	// Enforce either pod name OR selector.
-	if (len(rest) == 0 && selector == "") || (len(rest) > 0 && selector != "") {
+	// Pod name and selector are mutually exclusive.
+	if len(rest) > 0 && selector != "" {
 		fmt.Fprintln(os.Stderr, "Error: provide either <pod_name> OR --selector/-l (not both)")
 		cli.PrintUsage(os.Stderr)
 		os.Exit(1)
@@ -55,31 +53,31 @@ func RunInspect(args []string) {
 
 	fmt.Printf("Namespace: %s\n", env.Namespace)
 
-	if selector != "" {
-		pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(selector))
+	// Single pod by name.
+	if len(rest) == 1 {
+		pod, err := env.Clientset.CoreV1().Pods(env.Namespace).Get(ctx, rest[0], kube.GetOptions())
 		if err != nil {
-			cli.Fatal(fmt.Errorf("list pods: %w", err))
+			cli.Fatal(fmt.Errorf("get pod: %w", err))
 		}
-		if len(pods.Items) == 0 {
-			fmt.Println("No pods found.")
-			return
-		}
-
-		for i := range pods.Items {
-			p := pods.Items[i]
-			fmt.Println("==========================================")
-			fmt.Printf("Pod: %s\n", p.Name)
-			inspectPodObject(p, showResources)
-		}
+		inspectPodObject(*pod, showResources)
 		return
 	}
 
-	podName := rest[0]
-	pod, err := env.Clientset.CoreV1().Pods(env.Namespace).Get(ctx, podName, kube.GetOptions())
+	// List by selector, or all pods when selector is empty.
+	pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(selector))
 	if err != nil {
-		cli.Fatal(fmt.Errorf("get pod: %w", err))
+		cli.Fatal(fmt.Errorf("list pods: %w", err))
 	}
-	inspectPodObject(*pod, showResources)
+	if len(pods.Items) == 0 {
+		fmt.Println("No pods found.")
+		return
+	}
+	for i := range pods.Items {
+		p := pods.Items[i]
+		fmt.Println("==========================================")
+		fmt.Printf("Pod: %s\n", p.Name)
+		inspectPodObject(p, showResources)
+	}
 }
 
 func inspectPodObject(podObj corev1.Pod, showResources bool) {

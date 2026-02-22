@@ -2,11 +2,12 @@ package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/spf13/pflag"
 
 	"example.com/kdiag/internal/cli"
 	"example.com/kdiag/internal/kube"
@@ -19,15 +20,13 @@ func RunAZ(args []string) {
 		os.Exit(1)
 	}
 
-	fs := flag.NewFlagSet("az pods", flag.ExitOnError)
+	fs := pflag.NewFlagSet("az pods", pflag.ExitOnError)
 	var k kube.KubeFlags
 	fs.StringVar(&k.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	fs.StringVar(&k.Context, "context", "", "kube context")
-	fs.StringVar(&k.Namespace, "namespace", "", "namespace")
-	fs.StringVar(&k.Namespace, "n", "", "namespace (shorthand)")
+	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace")
 	var selector string
-	fs.StringVar(&selector, "selector", "", "label selector (required)")
-	fs.StringVar(&selector, "l", "", "label selector (required, shorthand)")
+	fs.StringVarP(&selector, "selector", "l", "", "label selector (required)")
 
 	_ = fs.Parse(args[1:])
 	selector = strings.TrimSpace(selector)
