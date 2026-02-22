@@ -1,5 +1,4 @@
-// kubeclient.go
-package main
+package kube
 
 import (
 	"fmt"
@@ -8,18 +7,18 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type kubeFlags struct {
+type KubeFlags struct {
 	Kubeconfig string
 	Context    string
 	Namespace  string
 }
 
-type kubeEnv struct {
+type KubeEnv struct {
 	Clientset *kubernetes.Clientset
 	Namespace string
 }
 
-func newKubeEnv(k kubeFlags) (*kubeEnv, error) {
+func NewKubeEnv(k KubeFlags) (*KubeEnv, error) {
 	cfgLoadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if k.Kubeconfig != "" {
 		cfgLoadingRules.ExplicitPath = k.Kubeconfig
@@ -54,7 +53,7 @@ func newKubeEnv(k kubeFlags) (*kubeEnv, error) {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
 
-	return &kubeEnv{
+	return &KubeEnv{
 		Clientset: cs,
 		Namespace: ns,
 	}, nil

@@ -1,5 +1,4 @@
-// cmd_az_pods.go
-package main
+package cmd
 
 import (
 	"context"
@@ -8,17 +7,20 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"example.com/kdiag/internal/cli"
+	"example.com/kdiag/internal/kube"
 )
 
-func runAZ(args []string) {
+func RunAZ(args []string) {
 	if len(args) < 1 || args[0] != "pods" {
 		fmt.Fprintln(os.Stderr, "Error: az requires subcommand: pods")
-		printUsage(os.Stderr)
+		cli.PrintUsage(os.Stderr)
 		os.Exit(1)
 	}
 
 	fs := flag.NewFlagSet("az pods", flag.ExitOnError)
-	var k kubeFlags
+	var k kube.KubeFlags
 	fs.StringVar(&k.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	fs.StringVar(&k.Context, "context", "", "kube context")
 	fs.StringVar(&k.Namespace, "namespace", "", "namespace")
@@ -34,36 +36,37 @@ func runAZ(args []string) {
 		os.Exit(1)
 	}
 
-	env, err := newKubeEnv(k)
+	env, err := kube.NewKubeEnv(k)
 	if err != nil {
-		fatal(err)
+		cli.Fatal(err)
 	}
 
 	ctx := context.Background()
-	pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, listOptions(selector))
+	pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(selector))
 	if err != nil {
-		fatal(fmt.Errorf("list pods: %w", err))
+		cli.Fatal(fmt.Errorf("list pods: %w", err))
 	}
 	if len(pods.Items) == 0 {
 		fmt.Println("No pods found.")
 		return
 	}
 
-	nodes, err := env.Clientset.CoreV1().Nodes().List(ctx, listOptions(""))
+	// Nodes are cluster-scoped (not namespaced), so we list all of them.
+	nodes, err := env.Clientset.CoreV1().Nodes().List(ctx, kube.ListOptions(""))
 	if err != nil {
-		fatal(fmt.Errorf("list nodes: %w", err))
+		cli.Fatal(fmt.Errorf("list nodes: %w", err))
 	}
 
 	nodeToZone := map[string]string{}
 	for _, n := range nodes.Items {
-		nodeToZone[n.Name] = zoneForNodeLabels(n.Labels)
+		nodeToZone[n.Name] = kube.ZoneForNodeLabels(n.Labels)
 	}
 
 	fmt.Printf("Namespace: %s\n", env.Namespace)
 	fmt.Printf("Pods placement (selector: %s)\n", selector)
 	fmt.Println("------------------------------------------")
 
-	tw := newTabWriter(os.Stdout)
+	tw := cli.NewTabWriter(os.Stdout)
 	fmt.Fprintln(tw, "POD\tNODE\tZONE")
 	counts := map[string]int{}
 

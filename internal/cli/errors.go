@@ -1,12 +1,11 @@
-// errors.go
-package main
+package cli
 
 import (
 	"fmt"
 	"os"
 )
 
-func fatal(err error) {
+func Fatal(err error) {
 	if err == nil {
 		return
 	}

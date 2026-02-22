@@ -1,12 +1,11 @@
-// usage.go
-package main
+package cli
 
 import (
 	"fmt"
 	"io"
 )
 
-func printUsage(w io.Writer) {
+func PrintUsage(w io.Writer) {
 	fmt.Fprintln(w, `kdiag
 
 Usage:
@@ -29,7 +28,7 @@ AZ examples:
   kdiag az pods -n gloo-system -l 'gateway-proxy-id=gateway-proxy,gateway-proxy=live'
 
 Notes:
-  - “Zone/AZ” is derived from node labels:
+  - "Zone/AZ" is derived from node labels:
       topology.kubernetes.io/zone
     fallback:
       failure-domain.beta.kubernetes.io/zone

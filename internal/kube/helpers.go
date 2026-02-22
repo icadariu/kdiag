@@ -1,22 +1,21 @@
-// k8s_helpers.go
-package main
+package kube
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func listOptions(selector string) v1.ListOptions {
+func ListOptions(selector string) v1.ListOptions {
 	return v1.ListOptions{
 		LabelSelector: selector,
 	}
 }
 
-func getOptions() v1.GetOptions {
+func GetOptions() v1.GetOptions {
 	return v1.GetOptions{}
 }
 
-func zoneForNodeLabels(labels map[string]string) string {
+func ZoneForNodeLabels(labels map[string]string) string {
 	if labels == nil {
 		return "-"
 	}
@@ -29,7 +28,7 @@ func zoneForNodeLabels(labels map[string]string) string {
 	return "-"
 }
 
-func containerStateKey(st corev1.ContainerState) string {
+func ContainerStateKey(st corev1.ContainerState) string {
 	switch {
 	case st.Running != nil:
 		return "running"
@@ -42,7 +41,7 @@ func containerStateKey(st corev1.ContainerState) string {
 	}
 }
 
-func containerStateReason(st corev1.ContainerState) string {
+func ContainerStateReason(st corev1.ContainerState) string {
 	if st.Waiting != nil {
 		return st.Waiting.Reason
 	}
@@ -52,7 +51,7 @@ func containerStateReason(st corev1.ContainerState) string {
 	return ""
 }
 
-func resourcesForContainer(containers []corev1.Container, name string) (map[string]string, map[string]string) {
+func ResourcesForContainer(containers []corev1.Container, name string) (map[string]string, map[string]string) {
 	for _, c := range containers {
 		if c.Name != name {
 			continue
