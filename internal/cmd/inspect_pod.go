@@ -14,21 +14,27 @@ import (
 )
 
 func RunInspect(args []string) {
-	if len(args) < 1 || args[0] != "pod" {
-		fmt.Fprintln(os.Stderr, "Error: inspect requires subcommand: pod")
-		cli.PrintUsage(os.Stderr)
-		os.Exit(1)
-	}
-
 	fs := pflag.NewFlagSet("inspect pod", pflag.ExitOnError)
 	var k kube.KubeFlags
 	fs.StringVar(&k.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	fs.StringVar(&k.Context, "context", "", "kube context")
-	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace")
+	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (defaults to current context)")
 	var showResources bool
 	fs.BoolVar(&showResources, "resources", false, "show resource requests/limits")
 	var selector string
-	fs.StringVarP(&selector, "selector", "l", "", "label selector")
+	fs.StringVarP(&selector, "selector", "l", "", "label selector; omit to inspect all pods")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: kdiag inspect pod [flags] [<pod_name> | -l <selector>]")
+		fmt.Fprintln(os.Stderr, "\nShow container state for one pod or a set of pods.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fmt.Fprint(os.Stderr, fs.FlagUsages())
+	}
+
+	if len(args) < 1 || args[0] != "pod" {
+		fmt.Fprintln(os.Stderr, "Error: inspect requires subcommand: pod")
+		fs.Usage()
+		os.Exit(1)
+	}
 
 	_ = fs.Parse(args[1:])
 	rest := fs.Args()
@@ -37,7 +43,7 @@ func RunInspect(args []string) {
 	// Pod name and selector are mutually exclusive.
 	if len(rest) > 0 && selector != "" {
 		fmt.Fprintln(os.Stderr, "Error: provide either <pod_name> OR --selector/-l (not both)")
-		cli.PrintUsage(os.Stderr)
+		fs.Usage()
 		os.Exit(1)
 	}
 	if len(rest) > 1 {

@@ -20,30 +20,37 @@ import (
 const revisionAnnotation = "deployment.kubernetes.io/revision"
 
 func RunRS(args []string) {
-  if len(args) < 1 || args[0] != "diff" {
-    fmt.Fprintln(os.Stderr, "Error: rs requires subcommand: diff")
-    cli.PrintUsage(os.Stderr)
-    os.Exit(1)
-  }
-
   fs := pflag.NewFlagSet("rs diff", pflag.ExitOnError)
   var k kube.KubeFlags
   fs.StringVar(&k.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
   fs.StringVar(&k.Context, "context", "", "kube context")
-  fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace")
+  fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (defaults to current context)")
   var selector string
-  fs.StringVarP(&selector, "selector", "l", "", "label selector to find the deployment")
+  fs.StringVarP(&selector, "selector", "l", "", "label selector to identify the deployment")
+  fs.Usage = func() {
+    fmt.Fprintln(os.Stderr, "Usage: kdiag rs diff [flags] [<deployment-name> | -l <selector>]")
+    fmt.Fprintln(os.Stderr, "\nDiff pod template spec between the previous and current ReplicaSet.")
+    fmt.Fprintln(os.Stderr, "\nFlags:")
+    fmt.Fprint(os.Stderr, fs.FlagUsages())
+  }
+
+  if len(args) < 1 || args[0] != "diff" {
+    fmt.Fprintln(os.Stderr, "Error: rs requires subcommand: diff")
+    fs.Usage()
+    os.Exit(1)
+  }
+
   _ = fs.Parse(args[1:])
 
   rest := fs.Args()
   if len(rest) == 0 && selector == "" {
     fmt.Fprintln(os.Stderr, "Error: rs diff requires <deployment-name> or -l <selector>")
-    cli.PrintUsage(os.Stderr)
+    fs.Usage()
     os.Exit(1)
   }
   if len(rest) > 0 && selector != "" {
     fmt.Fprintln(os.Stderr, "Error: provide either <deployment-name> OR --selector/-l (not both)")
-    cli.PrintUsage(os.Stderr)
+    fs.Usage()
     os.Exit(1)
   }
 
@@ -102,11 +109,11 @@ func RunRS(args []string) {
   currRev := curr.Annotations[revisionAnnotation]
   prevRev := prev.Annotations[revisionAnnotation]
 
-  prevYAML, err := yaml.Marshal(prev.Spec.Template.Spec)
+  prevYAML, err := yaml.Marshal(prev.Spec.Template)
   if err != nil {
     cli.Fatal(fmt.Errorf("marshal previous: %w", err))
   }
-  currYAML, err := yaml.Marshal(curr.Spec.Template.Spec)
+  currYAML, err := yaml.Marshal(curr.Spec.Template)
   if err != nil {
     cli.Fatal(fmt.Errorf("marshal current: %w", err))
   }
