@@ -37,6 +37,49 @@ kdiag inspect pod -n gloo-system -l 'app=gateway-proxy'
 
 ---
 
+### `rs diff`
+
+Diff the pod template between the previous and current ReplicaSet of a deployment.
+Covers both `spec.template.metadata` (labels, annotations) and
+`spec.template.spec` (containers, probes, resources, etc.).
+
+Output uses coloured unified diff (`diff --color=always -u`).
+
+```text
+kdiag rs diff [flags] <deployment-name>
+kdiag rs diff [flags] -l <label_selector>
+```
+
+### `rs diff` examples
+
+```sh
+# By deployment name
+kdiag rs diff -n my-ns my-deployment
+
+# By label selector (errors if more than one deployment matches)
+kdiag rs diff -n my-ns -l 'app=my-app'
+```
+
+Sample output:
+
+```text
+Deployment: my-ns/my-deployment
+Diff: revision 1 → 2
+
+--- revision/1 (my-deployment-74494695b8)
++++ revision/2 (my-deployment-769554785d)
+@@ -3,7 +3,7 @@
+     labels:
+       app: my-deployment
+-      stage: v1
++      stage: v2
+ spec:
+   containers:
+   - livenessProbe:
+```
+
+---
+
 ### `az pods`
 
 List pods with their node assignment and availability zone, then print
@@ -123,6 +166,7 @@ internal/
   cmd/
     inspect_pod.go         # inspect pod command
     az_pods.go             # az pods command
+    rs_diff.go             # rs diff command
 ```
 
 ### Adding a new command
