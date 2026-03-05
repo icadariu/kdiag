@@ -14,24 +14,31 @@ import (
 )
 
 func RunAZ(args []string) {
-	if len(args) < 1 || args[0] != "pods" {
-		fmt.Fprintln(os.Stderr, "Error: az requires subcommand: pods")
-		cli.PrintUsage(os.Stderr)
-		os.Exit(1)
-	}
-
 	fs := pflag.NewFlagSet("az pods", pflag.ExitOnError)
 	var k kube.KubeFlags
 	fs.StringVar(&k.Kubeconfig, "kubeconfig", "", "path to kubeconfig")
 	fs.StringVar(&k.Context, "context", "", "kube context")
-	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace")
+	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (defaults to current context)")
 	var selector string
 	fs.StringVarP(&selector, "selector", "l", "", "label selector (required)")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: kdiag az pods [flags] -l <selector>")
+		fmt.Fprintln(os.Stderr, "\nShow pod placement across nodes and availability zones.")
+		fmt.Fprintln(os.Stderr, "\nFlags:")
+		fmt.Fprint(os.Stderr, fs.FlagUsages())
+	}
+
+	if len(args) < 1 || args[0] != "pods" {
+		fmt.Fprintln(os.Stderr, "Error: az requires subcommand: pods")
+		fs.Usage()
+		os.Exit(1)
+	}
 
 	_ = fs.Parse(args[1:])
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
 		fmt.Fprintln(os.Stderr, "Error: az pods requires --selector/-l")
+		fs.Usage()
 		os.Exit(1)
 	}
 

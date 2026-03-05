@@ -229,6 +229,70 @@ func TestAZ_MissingSubcommand(t *testing.T) {
 	}
 }
 
+// ── rs diff ───────────────────────────────────────────────────────────────────
+
+func TestRSDiff_ByName(t *testing.T) {
+	out, _, code := run("rs", "diff", "-n", "kdiag-test", "test-app")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	for _, want := range []string{"Deployment: kdiag-test/test-app", "Diff: revision"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output:\n%s", want, out)
+		}
+	}
+}
+
+func TestRSDiff_BySelector(t *testing.T) {
+	out, _, code := run("rs", "diff", "-n", "kdiag-test", "-l", "app=test-app")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	if !strings.Contains(out, "Deployment: kdiag-test/test-app") {
+		t.Errorf("expected deployment header in output:\n%s", out)
+	}
+}
+
+func TestRSDiff_MissingSubcommand(t *testing.T) {
+	_, errOut, code := run("rs")
+	if code == 0 {
+		t.Error("expected non-zero exit for missing subcommand")
+	}
+	if !strings.Contains(errOut, "Error:") {
+		t.Errorf("expected error message in stderr:\n%s", errOut)
+	}
+}
+
+func TestRSDiff_NoArgsNoSelector(t *testing.T) {
+	_, errOut, code := run("rs", "diff", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit when neither name nor selector given")
+	}
+	if !strings.Contains(errOut, "Error:") {
+		t.Errorf("expected error message in stderr:\n%s", errOut)
+	}
+}
+
+func TestRSDiff_NameAndSelector_Error(t *testing.T) {
+	_, errOut, code := run("rs", "diff", "-n", "kdiag-test", "test-app", "-l", "app=test-app")
+	if code == 0 {
+		t.Error("expected non-zero exit when both name and selector given")
+	}
+	if !strings.Contains(errOut, "Error:") {
+		t.Errorf("expected error message in stderr:\n%s", errOut)
+	}
+}
+
+func TestRSDiff_NoMatch_Error(t *testing.T) {
+	_, errOut, code := run("rs", "diff", "-n", "kdiag-test", "-l", "app=does-not-exist")
+	if code == 0 {
+		t.Error("expected non-zero exit when selector matches no deployments")
+	}
+	if strings.TrimSpace(errOut) == "" {
+		t.Errorf("expected error message in stderr, got nothing")
+	}
+}
+
 // ── global ────────────────────────────────────────────────────────────────────
 
 // Unknown top-level command exits non-zero.
