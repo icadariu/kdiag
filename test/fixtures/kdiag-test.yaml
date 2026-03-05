@@ -10,6 +10,8 @@ kind: Deployment
 metadata:
   name: test-app
   namespace: kdiag-test
+  labels:
+    app: test-app
 spec:
   replicas: 2
   selector:

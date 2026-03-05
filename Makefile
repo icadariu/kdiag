@@ -30,6 +30,12 @@ cluster-up:
 	  --for=condition=ready \
 	  -n kdiag-test \
 	  --timeout=90s
+	@echo "Triggering second rollout to create a previous ReplicaSet for rs diff tests..."
+	KUBECONFIG=$(KUBECONFIG_FILE) kubectl patch deployment test-app \
+	  -n kdiag-test \
+	  -p '{"spec":{"template":{"metadata":{"annotations":{"kdiag-rollout":"v2"}}}}}'
+	KUBECONFIG=$(KUBECONFIG_FILE) kubectl rollout status deployment/test-app \
+	  -n kdiag-test --timeout=60s
 	@echo "Cluster ready."
 
 ## cluster-down: delete the kind cluster

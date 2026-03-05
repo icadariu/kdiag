@@ -20,6 +20,8 @@ func main() {
 		cmd.RunInspect(args[1:])
 	case "az":
 		cmd.RunAZ(args[1:])
+	case "rs":
+		cmd.RunRS(args[1:])
 	case "-h", "--help", "help":
 		cli.PrintUsage(os.Stdout)
 	default:
