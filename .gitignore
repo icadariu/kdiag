@@ -1,0 +1,56 @@
+# ----------------------------------
+# Go build artifacts
+# ----------------------------------
+/kdiag
+/kdiag.exe
+*.exe
+*.out
+*.test
+*.prof
+
+# Go workspace / tooling
+/go.work
+/go.work.sum
+
+# ----------------------------------
+# Go module files (managed by Go)
+# ----------------------------------
+# (keep go.mod and go.sum committed)
+# /go.mod
+# /go.sum
+
+# ----------------------------------
+# IDE / editor files
+# ----------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# ----------------------------------
+# OS-specific files
+# ----------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# ----------------------------------
+# Logs / local output
+# ----------------------------------
+*.log
+
+# ----------------------------------
+# Kubernetes / local tooling
+# ----------------------------------
+# Do NOT commit local kubeconfigs or env files
+kubeconfig
+.kube/
+.env
+
+# ----------------------------------
+# Coverage / profiling
+# ----------------------------------
+coverage.out
