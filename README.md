@@ -494,7 +494,7 @@ or switch context with `kubectl config use-context` before invoking kdiag.
 
 ## Installation
 
-Requires Go 1.23+.
+Requires Go 1.26.3+.
 
 **Recommended — `make install`** drops a version-stamped binary into your
 Go bin directory (`$(go env GOBIN)`, falling back to `$(go env GOPATH)/bin`,
@@ -666,5 +666,5 @@ crashing pod to exercise different container states.
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.26.3+
 - A reachable Kubernetes cluster and a valid kubeconfig
