@@ -1,0 +1,212 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-test
+---
+# Deployment: multiple replicas for selector and all-pods tests.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: kdiag-test
+  labels:
+    app: test-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-app
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+---
+# Static pod with a known name for the single-pod-by-name tests.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kdiag-static
+  namespace: kdiag-test
+  labels:
+    app: static
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
+---
+# Pod that exits immediately — will enter CrashLoopBackOff for state tests.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kdiag-crasher
+  namespace: kdiag-test
+  labels:
+    app: crasher
+spec:
+  restartPolicy: Always
+  containers:
+    - name: crasher
+      image: busybox:latest
+      command: ["sh", "-c", "exit 1"]
+---
+# DaemonSet: one pod per node — exercises `inspect ds`.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kdiag-ds
+  namespace: kdiag-test
+  labels:
+    app: kdiag-ds
+spec:
+  selector:
+    matchLabels:
+      app: kdiag-ds
+  template:
+    metadata:
+      labels:
+        app: kdiag-ds
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# StatefulSet — exercises `inspect sts`. No PVCs to keep the fixture lean.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kdiag-sts
+  namespace: kdiag-test
+  labels:
+    app: kdiag-sts
+spec:
+  serviceName: kdiag-sts
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kdiag-sts
+  template:
+    metadata:
+      labels:
+        app: kdiag-sts
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# Two ConfigMaps for `kdiag diff cm` (generic dispatch + any-kind support).
+# Keep contents intentionally different so the diff has visible content.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kdiag-cm-a
+  namespace: kdiag-test
+data:
+  greeting: hello
+  color: blue
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kdiag-cm-b
+  namespace: kdiag-test
+data:
+  greeting: hola
+  color: green
+  extra: only-in-b
+---
+# ConfigMap with a multi-line value — exercises `--yaml-field` rendering
+# of strings that contain newlines (must stay on one output line).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kdiag-cm-multiline
+  namespace: kdiag-test
+data:
+  config: |
+    line-one
+    needle-line-two
+    line-three
+---
+# Minimal CRD for `--yaml-field` against custom resources via the dynamic
+# client. The Widget CR below exercises the same code path that handles
+# cert-manager / argo / istio CRDs in real clusters.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.kdiag.test
+spec:
+  group: kdiag.test
+  names:
+    kind: Widget
+    plural: widgets
+    singular: widget
+    shortNames:
+      - wg
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                renewBefore:
+                  type: string
+                color:
+                  type: string
+---
+apiVersion: kdiag.test/v1
+kind: Widget
+metadata:
+  name: kdiag-widget
+  namespace: kdiag-test
+spec:
+  renewBefore: 24h
+  color: blue
+---
+# Hand-crafted Event whose message contains literal \n and \t. Verifies
+# `kdiag events` flattens control chars so tabwriter rows stay aligned.
+apiVersion: v1
+kind: Event
+metadata:
+  name: kdiag-multiline-test
+  namespace: kdiag-test
+involvedObject:
+  apiVersion: v1
+  kind: Pod
+  name: kdiag-static
+  namespace: kdiag-test
+type: Warning
+reason: KdiagMultilineTest
+message: "line one\nline two\twith-tab"
+source:
+  component: kdiag-fixture
