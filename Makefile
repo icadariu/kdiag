@@ -10,7 +10,7 @@ COMMIT     = $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 LDFLAGS    = -X main.Version=$(VERSION) -X main.BuildDate=$(BUILD_DATE) -X main.Commit=$(COMMIT)
 GOFLAGS    ?=
 
-.PHONY: cluster-up cluster-down test unit-tests integration-tests completion-tests build install autocompletion help
+.PHONY: cluster-up cluster-down test unit-tests integration-tests build install autocompletion help
 
 # Where to drop persisted shell-completion files. Override on the command line
 # if your fpath / completion dir is elsewhere, e.g.:
@@ -40,10 +40,6 @@ autocompletion: build
 
 unit-tests:
 	go test ./internal/...
-
-## completion-tests: drive zsh tab completion against a freshly built binary
-completion-tests: build
-	zsh test/completion_test.zsh
 
 ## cluster-up: create a kind cluster and apply test fixtures
 cluster-up:
