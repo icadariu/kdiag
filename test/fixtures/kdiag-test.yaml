@@ -118,6 +118,51 @@ spec:
               cpu: 10m
               memory: 16Mi
 ---
+# Two zero-replica deployments sharing label `kdiag-multi=yes`. Used to
+# exercise the `--label matched N deployments` error path in
+# `inspect deploy -l`. replicas: 0 keeps the cluster lean — no pods land.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kdiag-multi-a
+  namespace: kdiag-test
+  labels:
+    kdiag-multi: "yes"
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: kdiag-multi-a
+  template:
+    metadata:
+      labels:
+        app: kdiag-multi-a
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kdiag-multi-b
+  namespace: kdiag-test
+  labels:
+    kdiag-multi: "yes"
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: kdiag-multi-b
+  template:
+    metadata:
+      labels:
+        app: kdiag-multi-b
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+---
 # Two ConfigMaps for `kdiag diff cm` (generic dispatch + any-kind support).
 # Keep contents intentionally different so the diff has visible content.
 apiVersion: v1

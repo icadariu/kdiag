@@ -581,6 +581,7 @@ internal/
     client.go              # KubeFlags, KubeEnv, NewKubeEnv
     helpers.go             # Zone lookup, container state, resource extraction
     kinds.go               # Inspect kind registry (canonical/alias/cluster-scope)
+    resource_resolver.go   # Generic kind→GVR/GVK resolution via discovery (sort, diff)
   cli/
     usage.go               # PrintRootUsage / Print*Usage / WantsHelp
     format.go              # NewTabWriter, PrintKVBlock
@@ -588,11 +589,14 @@ internal/
   cmd/
     inspect.go             # inspect dispatcher + shared helpers
     inspect_pod.go         # inspect pod
-    inspect_workloads.go   # inspect deploy / ds / sts / rs
+    inspect_deploy.go      # inspect deploy (YAML-mode flags on the pod template)
+    inspect_workloads.go   # inspect ds / sts / rs
     inspect_node.go        # inspect node
-    az_pods.go             # az pods command
+    inspect_yaml_field.go  # --yaml-field walker (shared across inspect kinds)
+    az_pods.go             # printAZTable helper for --az on inspect subcommands
     events.go              # events command
-    diff.go                # diff rs command
+    diff.go                # diff command — diff rs + generic two-name diff
+    sort.go                # sort command (kind list by creation date)
     completion.go          # completion command (embeds scripts below)
     complete.go            # __complete hidden helper for shell completion
     completions/           # bash/zsh scripts (//go:embed)
@@ -659,8 +663,20 @@ make cluster-up && make test && make cluster-down
 ```
 
 Test fixtures live in `test/fixtures/kdiag-test.yaml` and create a dedicated
-`kdiag-test` namespace with a deployment, a static pod with known name, and a
-crashing pod to exercise different container states.
+`kdiag-test` namespace populated with the resources every command exercises:
+
+- Deployment `test-app` (rolled to revisions 1/2/3 by `make cluster-up` so
+  `diff rs` has history to compare)
+- Static Pod `kdiag-static` (single-pod tests) and `kdiag-crasher`
+  (terminated/waiting container states)
+- DaemonSet `kdiag-ds`, StatefulSet `kdiag-sts`
+- Zero-replica Deployments `kdiag-multi-a` / `kdiag-multi-b` sharing label
+  `kdiag-multi=yes` (exercises the `inspect deploy -l` multi-match error)
+- ConfigMaps `kdiag-cm-a`, `kdiag-cm-b`, `kdiag-cm-multiline`
+- CRD `widgets.kdiag.test` + Widget CR `kdiag-widget` (CRD-path coverage for
+  `inspect`, `diff`, `sort`)
+- Event `kdiag-multiline-test` (multiline-message sanitisation in `events`)
+
 
 ---
 
