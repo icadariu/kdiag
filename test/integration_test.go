@@ -289,6 +289,22 @@ func TestInspectPod_NotFound(t *testing.T) {
 	}
 }
 
+// Partial name matching 2+ pods errors with a disambiguation list.
+// `test-app` is the substring of both test-app-<hash1> and test-app-<hash2>
+// (the deployment has replicas: 2).
+func TestInspectPod_AmbiguousPartialName(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "test-app")
+	if code == 0 {
+		t.Error("expected non-zero exit when partial name matches multiple pods")
+	}
+	if !strings.Contains(errOut, "pods match") {
+		t.Errorf("expected 'pods match' in stderr:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "be more specific") {
+		t.Errorf("expected 'be more specific' hint in stderr:\n%s", errOut)
+	}
+}
+
 // Providing both pod name and selector is an error.
 func TestInspectPod_NameAndSelector_Error(t *testing.T) {
 	_, errOut, code := run("inspect", "pod", "kdiag-static", "-l", "app=static", "-n", "kdiag-test")
@@ -514,6 +530,24 @@ func TestInspectDeploy_LabelNoMatch_Error(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "no deployments matched") {
 		t.Errorf("expected 'no deployments matched' in stderr:\n%s", errOut)
+	}
+}
+
+// --label matching 2+ deployments errors with a disambiguation list. The
+// fixture defines kdiag-multi-a and kdiag-multi-b both labeled
+// `kdiag-multi=yes` for this case.
+func TestInspectDeploy_LabelMultiMatch_Error(t *testing.T) {
+	_, errOut, code := run("inspect", "deploy", "-n", "kdiag-test", "-l", "kdiag-multi=yes")
+	if code == 0 {
+		t.Error("expected non-zero exit when --label matches multiple deployments")
+	}
+	if !strings.Contains(errOut, "matched 2 deployments") {
+		t.Errorf("expected 'matched 2 deployments' in stderr:\n%s", errOut)
+	}
+	for _, want := range []string{"kdiag-multi-a", "kdiag-multi-b"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("expected disambiguation entry %q in stderr:\n%s", want, errOut)
+		}
 	}
 }
 
@@ -916,6 +950,38 @@ func TestRSDiff_BySelector(t *testing.T) {
 	}
 	if !strings.Contains(out, "Deployment: kdiag-test/test-app") {
 		t.Errorf("expected deployment header in output:\n%s", out)
+	}
+}
+
+// `diff rs --full` dumps the full RS objects via the dynamic client instead
+// of just .spec.template. The unified diff only shows lines that DIFFER, so
+// the marker must be an RS-metadata field whose value changes across
+// revisions. `deployment.kubernetes.io/revision` (RS-level annotation set by
+// the deployment controller) and `generation` (RS-level field) both differ
+// across revisions and never appear in template-only mode.
+func TestRSDiff_Full(t *testing.T) {
+	out, _, code := run("diff", "rs", "-n", "kdiag-test", "--full", "test-app")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	if !strings.Contains(out, "Deployment: kdiag-test/test-app") {
+		t.Errorf("expected deployment header in output:\n%s", out)
+	}
+	for _, want := range []string{"deployment.kubernetes.io/revision:", "generation:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in --full output:\n%s", want, out)
+		}
+	}
+
+	// Sanity check: the same fields must NOT appear in template-only mode.
+	plain, _, code := run("diff", "rs", "-n", "kdiag-test", "test-app")
+	if code != 0 {
+		t.Fatalf("template-only run failed: exit %d\noutput: %s", code, plain)
+	}
+	for _, notWant := range []string{"deployment.kubernetes.io/revision:", "generation:"} {
+		if strings.Contains(plain, notWant) {
+			t.Errorf("did not expect %q in template-only output (only --full should include it):\n%s", notWant, plain)
+		}
 	}
 }
 
