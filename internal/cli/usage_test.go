@@ -30,14 +30,14 @@ func TestWantsHelp(t *testing.T) {
 
 // Root help in full mode must NOT enumerate each kind. That bloat is the
 // regression we're guarding against. It must list every command, including
-// the auxiliary ones (completion, version).
+// the auxiliary ones (completion).
 func TestPrintRootUsage_Full(t *testing.T) {
 	var buf bytes.Buffer
 	PrintRootUsage(&buf, true)
 	out := buf.String()
 
 	for _, want := range []string{
-		"inspect", "diff", "events", "completion", "version",
+		"inspect", "diff", "events", "completion",
 		"kdiag <command> -h",
 	} {
 		if !strings.Contains(out, want) {
@@ -63,7 +63,7 @@ func TestPrintRootUsage_Full(t *testing.T) {
 }
 
 // Compact mode (the no-arg landing screen) hides auxiliary commands so the
-// page stays focused on the diagnostic verbs. completion/version remain
+// page stays focused on the diagnostic verbs. completion remains
 // reachable via `kdiag --help`.
 func TestPrintRootUsage_Compact_HidesAuxCommands(t *testing.T) {
 	var buf bytes.Buffer
@@ -77,7 +77,7 @@ func TestPrintRootUsage_Compact_HidesAuxCommands(t *testing.T) {
 			t.Errorf("PrintRootUsage(compact) missing %q\n%s", want, out)
 		}
 	}
-	for _, banned := range []string{"completion", "version"} {
+	for _, banned := range []string{"completion"} {
 		if strings.Contains(out, banned) {
 			t.Errorf("PrintRootUsage(compact) should not list %q\n%s", banned, out)
 		}

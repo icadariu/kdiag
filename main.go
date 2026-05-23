@@ -15,7 +15,22 @@ var (
 	Commit    = "none"
 )
 
+// HandleVersionFlag prints the version line and returns true if --version
+// was passed. Call at the top of main().
+func HandleVersionFlag() bool {
+	for _, a := range os.Args[1:] {
+		if a == "--version" || a == "-version" {
+			fmt.Printf("%s (built %s, commit %s)\n", Version, BuildDate, Commit)
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
+	if HandleVersionFlag() {
+		return
+	}
 	if len(os.Args) < 2 {
 		cli.PrintRootUsage(os.Stderr, false)
 		os.Exit(1)
@@ -37,8 +52,6 @@ func main() {
 		// Hidden helper invoked by shell completion scripts. Not advertised
 		// in PrintRootUsage. See internal/cmd/complete.go.
 		cmd.RunComplete(args[1:])
-	case "version", "--version":
-		fmt.Printf("kdiag %s (built %s, commit %s)\n", Version, BuildDate, Commit)
 	case "-h", "--help", "help":
 		cli.PrintRootUsage(os.Stdout, true)
 	default:
