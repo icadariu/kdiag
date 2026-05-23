@@ -1644,7 +1644,7 @@ func TestNestedHelp(t *testing.T) {
 			name:     "root --help",
 			args:     []string{"--help"},
 			wantCode: 0,
-			contains: []string{"inspect", "diff", "completion", "events", "version", "Usage:"},
+			contains: []string{"inspect", "diff", "completion", "events", "Usage:"},
 			// Per-kind descriptions belong one level down.
 			excludes: []string{
 				"Show container state for all pods in a deployment",
@@ -1754,20 +1754,19 @@ func TestNestedHelp(t *testing.T) {
 	}
 }
 
-// `kdiag version` and `kdiag --version` print the stamped build metadata.
+// `kdiag --version` prints the stamped build metadata.
 // BuildDate must not be the default `unknown` — TestMain stamps it via -ldflags.
 func TestVersion(t *testing.T) {
-	for _, arg := range []string{"version", "--version"} {
-		out, _, code := run(arg)
-		if code != 0 {
-			t.Fatalf("expected exit 0 for %q, got %d", arg, code)
-		}
-		if !strings.Contains(out, "kdiag") {
-			t.Errorf("expected %q in output for %q:\n%s", "kdiag", arg, out)
-		}
-		if strings.Contains(out, "unknown") {
-			t.Errorf("expected stamped BuildDate (got default 'unknown') for %q:\n%s", arg, out)
-		}
+	out, _, code := run("--version")
+	if code != 0 {
+		t.Fatalf("expected exit 0 for --version, got %d", code)
+	}
+	// Output format: "<version> (built <date>, commit <sha>)" with no app name
+	if strings.Contains(out, "kdiag") {
+		t.Errorf("version output should not contain 'kdiag' prefix:\n%s", out)
+	}
+	if strings.Contains(out, "unknown") {
+		t.Errorf("expected stamped BuildDate (got default 'unknown'):\n%s", out)
 	}
 }
 
