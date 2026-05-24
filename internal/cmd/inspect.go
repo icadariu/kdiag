@@ -206,8 +206,8 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 
 	for _, v := range views {
 		// Header uses the kind label (Init Container / Sidecar Container / Container).
-		// 17-char width keeps the colon aligned with the existing KV blocks below.
-		fmt.Printf("%-17s %s\n", v.Kind.String()+":", v.Spec.Name)
+		// 19-char width gives every label at least one space before the container name.
+		fmt.Printf("%-19s%s\n", v.Kind.String()+":", v.Spec.Name)
 
 		repo, ref, isDigest := kube.ParseImage(v.Spec.Image)
 		fmt.Printf("  Image:         %s\n", repo)
