@@ -282,3 +282,42 @@ spec:
         requests:
           cpu: 10m
           memory: 16Mi
+---
+# Two-container deployment used to exercise --yml-path grouping behavior:
+# both containers have memory requests + limits so a needle of "memory"
+# returns 4 paths grouped under api: and sidecar:.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kdiag-multicont
+  namespace: kdiag-test
+  labels:
+    app: kdiag-multicont
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kdiag-multicont
+  template:
+    metadata:
+      labels:
+        app: kdiag-multicont
+    spec:
+      containers:
+        - name: api
+          image: nginx:alpine
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+        - name: sidecar
+          image: busybox:latest
+          command: ["sh", "-c", "sleep infinity"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              memory: 16Mi
