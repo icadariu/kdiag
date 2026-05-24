@@ -385,3 +385,59 @@ func TestWalkYMLPath_ConcreteIndexes(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestRegroupByName_GroupedAndUngrouped(t *testing.T) {
+	in := []string{
+		".metadata.finalizers[0]",
+		"# name=api\n.spec.containers[0].resources.limits.memory",
+		"# name=api\n.spec.containers[0].resources.requests.memory",
+		"# name=sidecar\n.spec.containers[1].resources.limits.memory",
+		".metadata.finalizers[1]",
+	}
+	got := regroupByName(in)
+	want := []ymlGroup{
+		{name: "", paths: []string{".metadata.finalizers[0]", ".metadata.finalizers[1]"}},
+		{name: "api", paths: []string{
+			".spec.containers[0].resources.limits.memory",
+			".spec.containers[0].resources.requests.memory",
+		}},
+		{name: "sidecar", paths: []string{".spec.containers[1].resources.limits.memory"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %#v, want %#v", got, want)
+	}
+}
+
+func TestRegroupByName_PreservesFirstSeenOrder(t *testing.T) {
+	in := []string{
+		"# name=worker\n.spec.containers[2].image",
+		"# name=api\n.spec.containers[0].image",
+		"# name=sidecar\n.spec.containers[1].image",
+	}
+	got := regroupByName(in)
+	if len(got) != 3 {
+		t.Fatalf("got %d groups, want 3", len(got))
+	}
+	wantOrder := []string{"worker", "api", "sidecar"}
+	for i, g := range got {
+		if g.name != wantOrder[i] {
+			t.Errorf("group[%d].name = %q, want %q", i, g.name, wantOrder[i])
+		}
+	}
+}
+
+func TestRegroupByName_OnlyUngrouped(t *testing.T) {
+	in := []string{".metadata.name", ".kind"}
+	got := regroupByName(in)
+	want := []ymlGroup{{name: "", paths: []string{".metadata.name", ".kind"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %#v, want %#v", got, want)
+	}
+}
+
+func TestRegroupByName_Empty(t *testing.T) {
+	got := regroupByName(nil)
+	if len(got) != 0 {
+		t.Errorf("got %d groups, want 0", len(got))
+	}
+}

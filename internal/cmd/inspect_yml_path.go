@@ -76,16 +76,22 @@ func runInspectYMLPath(env *kube.KubeEnv, kind, name, selector, needle string) {
 		if len(matches) == 0 {
 			continue
 		}
+		groups := regroupByName(matches)
+		indent := ""
 		if header {
 			fmt.Printf("%s/%s:\n", resolved.GVK.Kind, obj.GetName())
-			for _, m := range matches {
-				for _, line := range strings.Split(m, "\n") {
-					fmt.Printf("  %s\n", line)
+			indent = "  "
+		}
+		for _, g := range groups {
+			if g.name == "" {
+				for _, p := range g.paths {
+					fmt.Printf("%s%s\n", indent, p)
 				}
+				continue
 			}
-		} else {
-			for _, m := range matches {
-				fmt.Println(m)
+			fmt.Printf("%s%s:\n", indent, g.name)
+			for _, p := range g.paths {
+				fmt.Printf("%s  %s\n", indent, p)
 			}
 		}
 	}
@@ -129,6 +135,52 @@ func dedupStable(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// ymlGroup buckets paths that share an enclosing named array element.
+// An empty name means "no name annotation" — those paths print flat,
+// before any named blocks.
+type ymlGroup struct {
+	name  string
+	paths []string
+}
+
+// regroupByName turns walker output into ordered groups. The walker emits
+// either "<path>" (no array ctx) or "# name=<n>\n<path>" (inside named
+// array); we split on the embedded newline and bucket by name. The empty
+// (ungrouped) bucket is always first when present; named buckets follow
+// in first-seen order so output mirrors traversal.
+func regroupByName(lines []string) []ymlGroup {
+	if len(lines) == 0 {
+		return nil
+	}
+	idx := map[string]int{}
+	var groups []ymlGroup
+	add := func(name, path string) {
+		if i, ok := idx[name]; ok {
+			groups[i].paths = append(groups[i].paths, path)
+			return
+		}
+		idx[name] = len(groups)
+		groups = append(groups, ymlGroup{name: name, paths: []string{path}})
+	}
+	for _, line := range lines {
+		if strings.HasPrefix(line, "# name=") {
+			nl := strings.IndexByte(line, '\n')
+			if nl < 0 {
+				// Defensive: walker always pairs a header with a path. If
+				// this ever produces a headerless line, treat it as
+				// ungrouped so we don't drop data.
+				add("", line)
+				continue
+			}
+			name := strings.TrimPrefix(line[:nl], "# name=")
+			add(name, line[nl+1:])
+		} else {
+			add("", line)
+		}
+	}
+	return groups
 }
 
 func walkYMLPathInto(node any, path, arrayCtx string, match func(string) bool, out *[]string) {
