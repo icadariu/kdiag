@@ -355,7 +355,7 @@ func TestInspectDeploy_YAML_WorkloadShape(t *testing.T) {
 	}
 }
 
-// The removed --kubeconfig / --context / --find-path flags must be reported unknown.
+// The removed --kubeconfig / --context / --find-path flags must be reported as unknown.
 func TestInspect_RemovedFlags_Rejected(t *testing.T) {
 	cases := [][]string{
 		{"inspect", "pod", "--kubeconfig", "/tmp/x", "-n", "kdiag-test"},
