@@ -31,13 +31,16 @@ func TestWantsHelp(t *testing.T) {
 // Root help in full mode must NOT enumerate each kind. That bloat is the
 // regression we're guarding against. It must list every command — the only
 // auxiliary command left is `completion`. `--version` is a flag, not a
-// subcommand, so it does not appear in either help mode.
+// subcommand, so it does not appear in either help mode. The branded
+// title line "kdiag — Kubernetes diagnostic CLI" belongs to the help
+// screen only (gated on full).
 func TestPrintRootUsage_Full(t *testing.T) {
 	var buf bytes.Buffer
 	PrintRootUsage(&buf, true)
 	out := buf.String()
 
 	for _, want := range []string{
+		"kdiag — Kubernetes diagnostic CLI",
 		"inspect", "diff", "events", "completion",
 		"kdiag <command> -h",
 	} {
@@ -67,9 +70,10 @@ func TestPrintRootUsage_Full(t *testing.T) {
 	}
 }
 
-// Compact mode (the no-arg landing screen) hides the `completion` aux command
-// so the page stays focused on the diagnostic verbs. `completion` remains
-// reachable via `kdiag --help`. `--version` is a flag and never appears here.
+// Compact mode is the error-fallback (no-args, unknown command). It hides
+// the `completion` aux command and — per user feedback — must NOT print
+// the branded title line. Errors should stay terse; the title belongs on
+// the help screen only.
 func TestPrintRootUsage_Compact_HidesAuxCommands(t *testing.T) {
 	var buf bytes.Buffer
 	PrintRootUsage(&buf, false)
@@ -82,9 +86,12 @@ func TestPrintRootUsage_Compact_HidesAuxCommands(t *testing.T) {
 			t.Errorf("PrintRootUsage(compact) missing %q\n%s", want, out)
 		}
 	}
-	for _, banned := range []string{"completion"} {
+	for _, banned := range []string{
+		"completion",
+		"kdiag — Kubernetes diagnostic CLI",
+	} {
 		if strings.Contains(out, banned) {
-			t.Errorf("PrintRootUsage(compact) should not list %q\n%s", banned, out)
+			t.Errorf("PrintRootUsage(compact) should not contain %q\n%s", banned, out)
 		}
 	}
 }

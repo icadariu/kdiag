@@ -23,14 +23,17 @@ func WantsHelp(args []string) bool {
 // rather than a two-step tree. Kinds for `inspect` are summarized in the
 // description; full list is one level down via `kdiag inspect -h`.
 //
-// When full is false, the auxiliary `completion` command is hidden to keep
-// the no-arg landing screen focused on the diagnostic verbs. It remains
-// listed under `kdiag --help`. `--version` is a flag, not a subcommand, so
-// it does not appear in either mode.
+// `full` selects the help screen (true) vs. the error-fallback screen
+// (false). The branded title line and the auxiliary `completion` command
+// appear only on the help screen; the error paths (no args, unknown
+// command) stay terse and just show the command list + usage hint.
+// `--version` is a flag, not a subcommand, so it does not appear in
+// either mode.
 func PrintRootUsage(w io.Writer, full bool) {
-	fmt.Fprint(w, `kdiag — Kubernetes diagnostic CLI
-
-Available Commands:
+	if full {
+		fmt.Fprint(w, "kdiag — Kubernetes diagnostic CLI\n\n")
+	}
+	fmt.Fprint(w, `Available Commands:
   inspect      Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement
   diff         Diff Kubernetes resources (rs, pod, node)
   events       Show events in the current namespace
