@@ -1645,7 +1645,8 @@ func TestNestedHelp(t *testing.T) {
 			name:     "root --help",
 			args:     []string{"--help"},
 			wantCode: 0,
-			contains: []string{"inspect", "diff", "completion", "events", "Usage:"},
+			// The branded title line belongs to the help screen only.
+			contains: []string{"kdiag — Kubernetes diagnostic CLI", "inspect", "diff", "completion", "events", "Usage:"},
 			// Per-kind descriptions belong one level down. `version` is a flag
 			// (`--version`), not a subcommand, so it must not appear in help.
 			excludes: []string{
@@ -1658,6 +1659,24 @@ func TestNestedHelp(t *testing.T) {
 				// `version` subcommand has been removed.
 				"version",
 			},
+		},
+		{
+			// Regression guard: error-fallback usage (unknown command) must
+			// not print the branded title — only the help screen does. The
+			// usage block (available commands + hint) still appears.
+			name:     "unknown command",
+			args:     []string{"definitely-not-a-command"},
+			wantCode: 1,
+			contains: []string{"unknown command", "Available Commands:", "Usage:"},
+			excludes: []string{"kdiag — Kubernetes diagnostic CLI"},
+		},
+		{
+			// Same guard for the no-args path.
+			name:     "no args",
+			args:     []string{},
+			wantCode: 1,
+			contains: []string{"Available Commands:", "Usage:"},
+			excludes: []string{"kdiag — Kubernetes diagnostic CLI"},
 		},
 		{
 			name:     "inspect -h",
