@@ -35,7 +35,7 @@ _kdiag_at_flag_value() {
     local prev_idx=$((_kdiag_all_current - 1))
     (( prev_idx >= 1 )) || return 1
     case "${_kdiag_all_words[prev_idx]}" in
-        -n|--namespace|-l|--label|--find-path) return 0 ;;
+        -n|--namespace|-l|--label|--yml-path) return 0 ;;
     esac
     return 1
 }
@@ -52,7 +52,7 @@ _kdiag_find_kind_for() {
             continue
         fi
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--find-path)
+            -n|--namespace|-l|--label|--yml-path)
                 # Flag that takes a value — skip both flag and value.
                 ((i++))
                 ;;
@@ -98,7 +98,7 @@ _kdiag_count_positionals() {
         fi
         if (( ! found_kind )); then
             case "${_kdiag_all_words[i]}" in
-                -n|--namespace|-l|--label|--find-path)
+                -n|--namespace|-l|--label|--yml-path)
                     ((i++))
                     ;;
                 -*)
@@ -115,7 +115,7 @@ _kdiag_count_positionals() {
         fi
         # We have found both the subcommand and the kind. Now we count positionals after the kind.
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--find-path)
+            -n|--namespace|-l|--label|--yml-path)
                 ((i++))
                 ;;
             -*)
@@ -162,6 +162,20 @@ _kdiag() {
     zstyle ':completion::*:kdiag:*' format ''
     zstyle ':completion::*:kdiag-*:*' format ''
 
+    # View-selector detection: mirrors the bash script's view_seen logic so
+    # tab completion hides flags that don't compose with whatever view the
+    # user has already typed.
+    local view_seen=""
+    local _i
+    for ((_i=2; _i<=$#_kdiag_all_words; _i++)); do
+        case "${_kdiag_all_words[_i]}" in
+            --yml-path)   view_seen=ymlpath ;;
+            --resources)  view_seen=resources ;;
+            --spec)       view_seen=spec ;;
+            --az)         view_seen=az ;;
+        esac
+    done
+
     local -a top_cmds inspect_kinds diff_kinds completion_shells
     top_cmds=(
         'inspect:Show container/workload state for pods, deploy, ds, sts, rs, node'
@@ -187,14 +201,47 @@ _kdiag() {
         '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
         '(-l --label)'{-l,--label}'[Label selector]: :'
     )
-    inspect_flags=(
-        $shared_flags
-        '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-        '--yaml[Emit yq-safe YAML instead of text]'
-        '--find-path[Walk YAML and print yq paths matching a key or value]'
-        '--az[Show availability-zone placement]'
-        '--spec[deploy: print .spec.template.spec as YAML]'
-    )
+    local -a inspect_flags
+    case "${view_seen}" in
+        ymlpath)
+            inspect_flags=(
+                $shared_flags
+                '--yml-path[Walk YAML and print yq paths matching a key or value]'
+            )
+            ;;
+        resources)
+            inspect_flags=(
+                $shared_flags
+                '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                '--yaml[Emit yq-safe YAML instead of text]'
+                '--az[Show availability-zone placement]'
+            )
+            ;;
+        spec)
+            inspect_flags=(
+                $shared_flags
+                '--spec[deploy: print .spec.template.spec as YAML]'
+                '--yaml[Emit yq-safe YAML instead of text]'
+            )
+            ;;
+        az)
+            inspect_flags=(
+                $shared_flags
+                '--az[Show availability-zone placement]'
+                '--yaml[Emit yq-safe YAML instead of text]'
+            )
+            ;;
+        *)
+            inspect_flags=(
+                $shared_flags
+                '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                '--yaml[Emit yq-safe YAML instead of text]'
+                '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                '--az[Show availability-zone placement]'
+                '--spec[deploy: print .spec.template.spec as YAML]'
+            )
+            ;;
+    esac
     events_flags=(
         '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
         '(-A --all-namespaces)'{-A,--all-namespaces}'[List events across all namespaces]'
@@ -246,32 +293,114 @@ _kdiag() {
                         local -a kflags
                         case "$canonical" in
                             pod)
-                                kflags=(
-                                    $shared_flags
-                                    '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                    '--yaml[Emit yq-safe YAML instead of text]'
-                                    '--find-path[Walk YAML and print yq paths matching a key or value]'
-                                    '--az[Show availability-zone placement]'
-                                )
+                                case "${view_seen}" in
+                                    ymlpath)
+                                        kflags=(
+                                            $shared_flags
+                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                        )
+                                        ;;
+                                    resources)
+                                        kflags=(
+                                            $shared_flags
+                                            '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--az[Show availability-zone placement]'
+                                        )
+                                        ;;
+                                    az)
+                                        kflags=(
+                                            $shared_flags
+                                            '--az[Show availability-zone placement]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                        )
+                                        ;;
+                                    *)
+                                        kflags=(
+                                            $shared_flags
+                                            '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--az[Show availability-zone placement]'
+                                        )
+                                        ;;
+                                esac
                                 ;;
                             deployment)
-                                kflags=(
-                                    $shared_flags
-                                    '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                    '--yaml[Emit yq-safe YAML instead of text]'
-                                    '--find-path[Walk YAML and print yq paths matching a key or value]'
-                                    '--az[Show availability-zone placement]'
-                                    '--spec[deploy: print .spec.template.spec as YAML]'
-                                )
+                                case "${view_seen}" in
+                                    ymlpath)
+                                        kflags=(
+                                            $shared_flags
+                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                        )
+                                        ;;
+                                    resources)
+                                        kflags=(
+                                            $shared_flags
+                                            '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--az[Show availability-zone placement]'
+                                        )
+                                        ;;
+                                    spec)
+                                        kflags=(
+                                            $shared_flags
+                                            '--spec[deploy: print .spec.template.spec as YAML]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                        )
+                                        ;;
+                                    az)
+                                        kflags=(
+                                            $shared_flags
+                                            '--az[Show availability-zone placement]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                        )
+                                        ;;
+                                    *)
+                                        kflags=(
+                                            $shared_flags
+                                            '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--az[Show availability-zone placement]'
+                                            '--spec[deploy: print .spec.template.spec as YAML]'
+                                        )
+                                        ;;
+                                esac
                                 ;;
                             daemonset|statefulset|replicaset)
-                                kflags=(
-                                    '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
-                                    '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                    '--yaml[Emit yq-safe YAML instead of text]'
-                                    '--find-path[Walk YAML and print yq paths matching a key or value]'
-                                    '--az[Show availability-zone placement]'
-                                )
+                                case "${view_seen}" in
+                                    ymlpath)
+                                        kflags=(
+                                            '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
+                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                        )
+                                        ;;
+                                    resources)
+                                        kflags=(
+                                            '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
+                                            '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--az[Show availability-zone placement]'
+                                        )
+                                        ;;
+                                    az)
+                                        kflags=(
+                                            '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
+                                            '--az[Show availability-zone placement]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                        )
+                                        ;;
+                                    *)
+                                        kflags=(
+                                            '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
+                                            '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--az[Show availability-zone placement]'
+                                        )
+                                        ;;
+                                esac
                                 ;;
                             node)
                                 kflags=($shared_flags)
