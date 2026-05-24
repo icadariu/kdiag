@@ -41,19 +41,23 @@ Per-container output:
 Pass `--az` to show a POD/NODE/ZONE table and per-zone count summary
 instead of container state.
 
-#### Pod YAML flags
+#### Pod output flags
 
-`--container-spec` and `--resources` emit pure YAML on stdout — pipeable to
-`yq`. They are mutually exclusive and incompatible with `--az`.
+`--yaml` (or `--yml`) emits a single yq-safe YAML document instead of text.
+`--resources` narrows the output to per-container resource info (text or YAML).
+`--az` is incompatible with `--yaml`.
 
-| Flag | Emits |
-| ---- | ----- |
-| `--container-spec` | `.spec.containers[]` of the pod |
-| `--resources` | `[{ name, resources }]` for each container |
+| Flag | Description |
+| ---- | ----------- |
+| `--yaml`, `--yml` | Emit a single yq-safe YAML document instead of text |
+| `--resources` | Narrow output to per-container resource info (text or YAML) |
 
-With a positional partial name, output is flat YAML. With `--label`, output
-is a YAML map keyed by pod name (also when only one pod matches), so
-downstream pipelines stay predictable.
+Output includes init containers and sidecar containers (initContainer with
+`restartPolicy: Always`, k8s 1.28+), labeled `Init Container:` / `Sidecar Container:`
+/ `Container:` respectively.
+
+With a positional partial name, output is a flat YAML object. With `--label`,
+output is a flat YAML list, so downstream pipelines stay predictable.
 
 ### Examples
 
@@ -70,14 +74,11 @@ kdiag inspect pod --az -n example-system
 # AZ placement filtered by selector
 kdiag inspect pod --az -n example-system -l 'app=gateway-proxy'
 
-# Single pod, resources as YAML (yq-pipeable)
-kdiag inspect pod --resources -n example-system gateway-proxy
+# Single pod, full output as YAML (yq-pipeable)
+kdiag inspect pod my-pod --yaml | yq '.containers[].name'
 
-# Container spec, list container names with yq
-kdiag inspect pod --container-spec gateway-proxy | yq '.[].name'
-
-# Resources for every matching pod (YAML map keyed by pod name)
-kdiag inspect pod --resources -l 'app=gateway-proxy' | yq 'keys'
+# Resources for every matching pod as YAML (flat list)
+kdiag inspect pod -l 'app=gateway-proxy' --yaml | yq '.[0].name'
 ```
 
 ---
@@ -115,17 +116,19 @@ Workload summary fields:
 | `sts`         | Replicas, Service Name, Update Strategy, Selector |
 | `rs`          | Replicas, Selector, Owner (controlling deploy)   |
 
-#### Deployment template (YAML) flags
+#### Workload output flags
 
-`inspect deploy` additionally accepts YAML-mode flags that emit subtrees of
-the deployment's pod template (`.spec.template`), designed for piping into
-`yq`. They are mutually exclusive and incompatible with `--az`.
+`--yaml` (or `--yml`) emits a kdiag-shaped YAML document:
+`{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
+`--spec` (deploy only) emits the pod template spec (text or YAML).
+`--resources` narrows output to per-container resource info (text or YAML).
+`--az` is incompatible with `--yaml`.
 
-| Flag | Emits |
-| ---- | ----- |
-| `--resources` | `[{ name, resources }]` for each container in `.spec.template.spec.containers` |
-| `--spec` | `.spec.template.spec` (the full PodSpec) |
-| `--container-spec` | `.spec.template.spec.containers[]` |
+| Flag | Description |
+| ---- | ----------- |
+| `--yaml`, `--yml` | Emit a single yq-safe YAML document (kdiag-shaped) |
+| `--spec` | Emit the pod template spec (deploy only; errors on other kinds) |
+| `--resources` | Narrow output to per-container resource info (text or YAML) |
 
 For `inspect deploy`, `--resources` operates on the deployment template (no
 pod lookup). For `ds`/`sts`/`rs`, `--resources` keeps the per-pod text-block
@@ -151,10 +154,14 @@ kdiag inspect ds  -n kube-system kube-proxy
 kdiag inspect sts -n my-ns my-statefulset
 kdiag inspect rs  -n my-ns my-replicaset-abc123
 
-# Deployment template as YAML (pipe into yq)
-kdiag inspect deploy --resources      -n my-ns my-deployment
-kdiag inspect deploy --spec           -n my-ns my-deployment
-kdiag inspect deploy --container-spec -n my-ns my-deployment | yq '.[].name'
+# Deployment summary as YAML (yq-pipeable)
+kdiag inspect deploy my-deployment --yaml | yq '.pods | length'
+
+# Pod template spec as text
+kdiag inspect deploy my-deployment --spec
+
+# Deployment template resources as YAML
+kdiag inspect deploy --resources -n my-ns my-deployment
 ```
 
 ---
@@ -192,7 +199,7 @@ kdiag inspect node
 
 ---
 
-### `inspect --yaml-field`
+### `inspect --find-path`
 
 Find the `yq` path of any key or value inside a resource's YAML. Useful when
 you know the keyword (`Burstable`, `imagePullPolicy`, …) but not where it
@@ -215,34 +222,34 @@ unescaped.
 Key-match recursion: when a needle matches a *key* the walker emits the
 match and continues descending into the value, so common needles like
 `name` or `spec` will surface every nested occurrence. This is
-intentional — `--yaml-field` is grep-like, not deepest-match-only.
+intentional — `--find-path` is grep-like, not deepest-match-only.
 
 Smart-case matching, like ripgrep: an **all-lowercase** needle is
 case-insensitive; any uppercase character makes the match case-sensitive.
 
 ```text
-kdiag inspect <kind> [<name> | -l <label>] --yaml-field <keyword>
+kdiag inspect <kind> [<name> | -l <label>] --find-path <keyword>
 ```
 
 ```sh
 # Find the yq path of a value (case-sensitive — `Burstable` has uppercase)
-kdiag inspect pod my-pod --yaml-field Burstable
+kdiag inspect pod my-pod --find-path Burstable
 # .status.qosClass: Burstable
 
 # Find the yq path of a key, case-insensitive (multi-container deployment)
-kdiag inspect deploy my-deploy --yaml-field imagePull
+kdiag inspect deploy my-deploy --find-path imagePull
 # # name=app
 # .spec.template.spec.containers[].imagePullPolicy: IfNotPresent
 # # name=sidecar
 # .spec.template.spec.containers[].imagePullPolicy: Always
 
 # Search across all pods matched by a selector
-kdiag inspect pod -l app=my-app --yaml-field qosClass
+kdiag inspect pod -l app=my-app --find-path qosClass
 # pod/my-app-7d4...-abcd:
 #   .status.qosClass: Burstable
 
 # Works for CRDs too
-kdiag inspect certificates.cert-manager.io my-cert --yaml-field renewBefore
+kdiag inspect certificates.cert-manager.io my-cert --find-path renewBefore
 ```
 
 ---
@@ -525,7 +532,7 @@ The binary embeds `version` (from `git describe --tags --always --dirty`),
 `bash` or `zsh`. Scripts cover top-level subcommands, `inspect`
 kinds, `diff` and `sort` kinds (any kind the cluster exposes — built-in
 or CRD), and per-command flags (`-n/--namespace`, `-l/--label`,
-`--full`, `--resources`, `--spec`, `--container-spec`, `--az`).
+`--full`, `--yaml`, `--resources`, `--spec`, `--az`).
 
 Namespace and resource names are completed dynamically by querying the
 cluster — for example:
@@ -590,7 +597,7 @@ internal/
     inspect_deploy.go      # inspect deploy (YAML-mode flags on the pod template)
     inspect_workloads.go   # inspect ds / sts / rs
     inspect_node.go        # inspect node
-    inspect_yaml_field.go  # --yaml-field walker (shared across inspect kinds)
+    inspect_find_path.go   # --find-path walker (shared across inspect kinds)
     az_pods.go             # printAZTable helper for --az on inspect subcommands
     events.go              # events command
     diff.go                # diff command — diff rs + generic two-name diff
