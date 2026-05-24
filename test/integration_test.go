@@ -184,13 +184,13 @@ func TestInspectPod_Resources_LabelList_YAML(t *testing.T) {
 }
 
 // YAML flag combined with --az must error on pod too.
-func TestInspectPod_YAMLFlags_NotWithAZ(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "--az", "--resources", "-n", "kdiag-test", "kdiag-static")
+func TestInspectPod_YAML_NotWithAZ(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "--az", "--yaml", "-n", "kdiag-test", "kdiag-static")
 	if code == 0 {
-		t.Error("expected non-zero exit when YAML flag combined with --az")
+		t.Error("expected non-zero exit when --yaml is combined with --az")
 	}
-	if !strings.Contains(errOut, "--az cannot be combined") {
-		t.Errorf("expected '--az cannot be combined' error in stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--yaml cannot be combined with --az") {
+		t.Errorf("expected '--yaml cannot be combined with --az' in stderr:\n%s", errOut)
 	}
 }
 
@@ -629,15 +629,15 @@ func TestInspectDeploy_LabelMultiMatch_Error(t *testing.T) {
 	}
 }
 
-// `inspect deploy --resources` emits the deployment template's per-container
-// resources as YAML (issue #41). Should NOT iterate pods or show "Pod:" /
+// `inspect deploy --resources --yaml` emits a flat list of {name, kind, resources}
+// across all pods belonging to the deployment. Should NOT iterate pods or show "Pod:" /
 // "Container:" headers from the text mode.
 func TestInspectDeploy_Resources_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--resources", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--resources", "--yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
-	for _, want := range []string{"- name: nginx", "resources:", "requests:", "limits:", "cpu: 50m", "memory: 32Mi"} {
+	for _, want := range []string{"name: nginx", "kind: Regular", "resources:", "requests:", "limits:", "cpu: 50m", "memory: 32Mi"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in YAML output:\n%s", want, out)
 		}
@@ -649,12 +649,12 @@ func TestInspectDeploy_Resources_YAML(t *testing.T) {
 	}
 }
 
-// `inspect deploy --spec` emits .spec.template.spec as YAML. Keys are
+// `inspect deploy --spec --yaml` emits .spec.template.spec as YAML. Keys are
 // alphabetized by sigs.k8s.io/yaml (JSON marshalling), so "image" precedes
 // "name" inside each container entry — assert the keys separately, not as
 // a sequence-marker line.
 func TestInspectDeploy_Spec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--spec", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--spec", "--yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -666,13 +666,13 @@ func TestInspectDeploy_Spec_YAML(t *testing.T) {
 }
 
 // YAML flag combined with --az must error.
-func TestInspectDeploy_YAMLFlags_NotWithAZ(t *testing.T) {
-	_, errOut, code := run("inspect", "deploy", "--az", "--spec", "-n", "kdiag-test", "test-app")
+func TestInspectDeploy_YAML_NotWithAZ(t *testing.T) {
+	_, errOut, code := run("inspect", "deploy", "--az", "--yaml", "-n", "kdiag-test", "test-app")
 	if code == 0 {
-		t.Error("expected non-zero exit when YAML flag is combined with --az")
+		t.Error("expected non-zero exit when --yaml is combined with --az")
 	}
-	if !strings.Contains(errOut, "--az cannot be combined") {
-		t.Errorf("expected '--az cannot be combined' error in stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--yaml cannot be combined with --az") {
+		t.Errorf("expected '--yaml cannot be combined with --az' in stderr:\n%s", errOut)
 	}
 }
 
