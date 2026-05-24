@@ -2269,6 +2269,36 @@ func TestCompletion_MissingShell(t *testing.T) {
 	}
 }
 
+// ── help filtering for view-aware modes ───────────────────────────────────────
+
+// View-aware help: passing --yml-path to -h hides --yaml/--resources/--az.
+func TestInspectPod_HelpFiltered_YMLPath(t *testing.T) {
+	out, _, code := run("inspect", "pod", "--yml-path", "memory", "-h")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--yml-path") {
+		t.Errorf("help missing --yml-path:\n%s", out)
+	}
+	for _, flag := range []string{"--yaml", "--resources", "--az"} {
+		if strings.Contains(out, flag) {
+			t.Errorf("help unexpectedly contains %q:\n%s", flag, out)
+		}
+	}
+}
+
+func TestInspectPod_HelpUnfiltered(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-h")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	for _, flag := range []string{"--yml-path", "--yaml", "--resources", "--az"} {
+		if !strings.Contains(out, flag) {
+			t.Errorf("help missing %q:\n%s", flag, out)
+		}
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func assertContainerInfo(t *testing.T, out string) {

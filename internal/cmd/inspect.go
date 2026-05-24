@@ -42,6 +42,34 @@ func RunInspect(args []string) {
 	// handlerArgs = all tokens except the kind itself.
 	handlerArgs := append(args[:kindIdx:kindIdx], args[kindIdx+1:]...)
 
+	// Check for help on the specific kind, even if --yml-path is present.
+	// This allows `inspect pod --yml-path memory -h` to show kind-specific help.
+	// We check anywhere in handlerArgs (not just the first element) to support
+	// help requests after other flags.
+	if cli.WantsHelp(handlerArgs) || hasFlag(handlerArgs, "-h") || hasFlag(handlerArgs, "--help") {
+		switch kube.CanonicalKind(kind) {
+		case "pod":
+			// The handler will receive the full handlerArgs and can filter
+			// help based on what view is selected (via cli.ViewFlagSeen).
+			runInspectPod(handlerArgs)
+		case "deployment":
+			runInspectDeploy(handlerArgs)
+		case "daemonset":
+			runInspectDaemonSet(handlerArgs)
+		case "statefulset":
+			runInspectStatefulSet(handlerArgs)
+		case "replicaset":
+			runInspectReplicaSet(handlerArgs)
+		case "node":
+			runInspectNode(handlerArgs)
+		default:
+			fmt.Fprintf(os.Stderr, "Error: unknown inspect kind: %s\n\n", kind)
+			cli.PrintInspectUsage(os.Stderr, args)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// --spec is only valid for the deploy kind. Catch it here so the error
 	// path is uniform regardless of where the flag appears.
 	if hasFlag(handlerArgs, "--spec") && kube.CanonicalKind(kind) != "deployment" {
