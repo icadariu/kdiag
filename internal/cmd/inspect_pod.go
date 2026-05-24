@@ -53,14 +53,10 @@ func runInspectPod(args []string) {
 		os.Exit(1)
 	}
 
+	// --resources, --az (and --spec on deploy) are view selectors — at most
+	// one may be chosen. --yaml is a format flag and composes with any view.
 	if *showResources && showAZ {
-		fmt.Fprintln(os.Stderr, "Error: --resources cannot be combined with --az")
-		os.Exit(1)
-	}
-
-	// Validation: --yaml is incompatible with --az.
-	if showYAML && showAZ {
-		fmt.Fprintln(os.Stderr, "Error: --yaml cannot be combined with --az")
+		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)
 	}
 
@@ -89,6 +85,8 @@ func runInspectPod(args []string) {
 			os.Exit(1)
 		case 1:
 			switch {
+			case showAZ && showYAML:
+				emitAZYAML(env, ctx, matches)
 			case showAZ:
 				printAZTable(env, ctx, matches)
 			case showYAML && *showResources:
@@ -122,6 +120,8 @@ func runInspectPod(args []string) {
 		return
 	}
 	switch {
+	case showAZ && showYAML:
+		emitAZYAML(env, ctx, pods.Items)
 	case showAZ:
 		printAZTable(env, ctx, pods.Items)
 	case showYAML && *showResources:
@@ -254,7 +254,7 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "  YAML document on stdout, safe to pipe through yq.")
 	fmt.Fprintln(w, "    single pod:    map { name, namespace, containers, ... }")
 	fmt.Fprintln(w, "    multiple pods: flat list of pod-info maps")
-	fmt.Fprintln(w, "\n--resources narrows the content (text or YAML). --az is mutually exclusive with --yaml.")
+	fmt.Fprintln(w, "\n--resources and --az are view selectors (mutex). --yaml is a format flag and composes with any view.")
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")

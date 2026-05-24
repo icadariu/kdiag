@@ -75,8 +75,9 @@ Options:
                          makes it case-sensitive. Compatible with --label.
   --resources            Narrow output to container resources (text or YAML)
   --spec                 Deploy only: emit .spec.template.spec (text or YAML)
-  --az                   Availability-zone placement table (pod, deploy, ds, sts);
-                         incompatible with --yaml / --find-path
+  --az                   Availability-zone placement (pod, deploy, ds, sts).
+                         Composes with --yaml; mutually exclusive with
+                         --resources / --spec / --find-path (each selects a view).
 
 Examples:
   kdiag inspect pod my-pod

@@ -67,8 +67,9 @@ func runWorkload(short, label string, args []string) {
 		cli.Fatal(err)
 	}
 
-	if showYAML && showAZ {
-		fmt.Fprintln(os.Stderr, "Error: --yaml cannot be combined with --az")
+	// --resources/--az are view selectors (mutex); --yaml composes with any view.
+	if *showResources && showAZ {
+		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)
 	}
 	if showYAML {
@@ -76,6 +77,10 @@ func runWorkload(short, label string, args []string) {
 		pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(labelSel))
 		if err != nil {
 			cli.Fatal(fmt.Errorf("list pods: %w", err))
+		}
+		if showAZ {
+			emitAZYAML(env, ctx, pods.Items)
+			return
 		}
 		out := workloadInfo{
 			Name:      name,

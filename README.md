@@ -45,7 +45,9 @@ instead of container state.
 
 `--yaml` emits a single yq-safe YAML document instead of text.
 `--resources` narrows the output to per-container resource info (text or YAML).
-`--az` is incompatible with `--yaml`.
+`--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
+mutually exclusive with `--resources` / `--spec` / `--find-path` since each
+of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
@@ -122,7 +124,9 @@ Workload summary fields:
 `{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
 `--spec` (deploy only) emits the pod template spec (text or YAML).
 `--resources` narrows output to per-container resource info (text or YAML).
-`--az` is incompatible with `--yaml`.
+`--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
+mutually exclusive with `--resources` / `--spec` / `--find-path` since each
+of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |

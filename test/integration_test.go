@@ -226,14 +226,41 @@ func TestInspectPod_Resources_LabelList_YAML(t *testing.T) {
 	}
 }
 
-// YAML flag combined with --az must error on pod too.
-func TestInspectPod_YAML_NotWithAZ(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "--az", "--yaml", "-n", "kdiag-test", "kdiag-static")
-	if code == 0 {
-		t.Error("expected non-zero exit when --yaml is combined with --az")
+// --az + --yaml emits the AZ view as a YAML doc { placements, zoneSummary }.
+// --yaml is a format flag and composes with any view selector.
+func TestInspectPod_AZ_YAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "--az", "--yaml", "-n", "kdiag-test", "kdiag-static")
+	if code != 0 {
+		t.Fatalf("expected exit 0 for --az --yaml, got %d\nstdout: %s", code, out)
 	}
-	if !strings.Contains(errOut, "--yaml cannot be combined with --az") {
-		t.Errorf("expected '--yaml cannot be combined with --az' in stderr:\n%s", errOut)
+	var doc struct {
+		Placements []struct {
+			Pod, Node, Zone string
+		} `yaml:"placements"`
+		ZoneSummary map[string]int `yaml:"zoneSummary"`
+	}
+	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("yaml.Unmarshal failed: %v\nstdout: %s", err, out)
+	}
+	if len(doc.Placements) == 0 {
+		t.Errorf("expected at least one placement entry, got 0\nstdout: %s", out)
+	}
+	if doc.Placements[0].Pod != "kdiag-static" {
+		t.Errorf("expected first placement pod=kdiag-static, got %q", doc.Placements[0].Pod)
+	}
+	if len(doc.ZoneSummary) == 0 {
+		t.Errorf("expected zoneSummary to be populated, got empty\nstdout: %s", out)
+	}
+}
+
+// --resources is a view selector and must not compose with --az.
+func TestInspectPod_Resources_NotWithAZ(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "--resources", "--az", "-n", "kdiag-test", "kdiag-static")
+	if code == 0 {
+		t.Error("expected non-zero exit when --resources is combined with --az")
+	}
+	if !strings.Contains(errOut, "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' in stderr:\n%s", errOut)
 	}
 }
 
@@ -445,6 +472,85 @@ func TestInspect_SpecOnNonDeploy_Errors(t *testing.T) {
 		if !strings.Contains(errOut, "--spec") || !strings.Contains(errOut, "deploy") {
 			t.Errorf("%v: want stderr mentioning --spec/deploy, got: %s", args, errOut)
 		}
+	}
+}
+
+// ── inspect flag-combination matrix ─────────────────────────────────────────
+//
+// Sweeps every pair of flags advertised by `kdiag inspect --help`. The model:
+//   - View selectors (mutex): --resources, --spec, --az, --find-path.
+//     Default (no flag) is its own view.
+//   - Format flag (orthogonal): --yaml.
+//
+// Every compose-pair must exit 0; every mutex-pair must exit non-zero with a
+// recognisable error. If a row here is wrong, --help is lying to the user —
+// either the help advertises an impossible combo or the code rejects a valid
+// one. Either way, that's the bug to fix.
+
+func TestInspectPod_FlagMatrix(t *testing.T) {
+	type row struct {
+		name      string
+		args      []string
+		wantOK    bool
+		wantInErr string // substring required when wantOK is false
+	}
+	base := []string{"inspect", "pod", "kdiag-static", "-n", "kdiag-test"}
+	rows := []row{
+		{"resources+yaml composes", append(base, "--resources", "--yaml"), true, ""},
+		{"az+yaml composes", append(base, "--az", "--yaml"), true, ""},
+		{"resources+az is mutex", append(base, "--resources", "--az"), false, "mutually exclusive"},
+		{"find-path rejects --yaml alongside", append(base, "--find-path", "name", "--yaml"), false, "unknown flag"},
+		{"find-path rejects --az alongside", append(base, "--find-path", "name", "--az"), false, "unknown flag"},
+		{"find-path rejects --resources alongside", append(base, "--find-path", "name", "--resources"), false, "unknown flag"},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			out, errOut, code := run(r.args...)
+			if r.wantOK && code != 0 {
+				t.Fatalf("expected exit 0, got %d\nstdout: %s\nstderr: %s", code, out, errOut)
+			}
+			if !r.wantOK && code == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s", out)
+			}
+			if !r.wantOK && !strings.Contains(errOut, r.wantInErr) {
+				t.Errorf("expected stderr to contain %q, got: %s", r.wantInErr, errOut)
+			}
+		})
+	}
+}
+
+// Same matrix at the workload layer (deploy adds --spec). Locks down the
+// view-vs-format model across the per-kind handlers, which historically had
+// inconsistent rejections.
+func TestInspectDeploy_FlagMatrix(t *testing.T) {
+	type row struct {
+		name      string
+		args      []string
+		wantOK    bool
+		wantInErr string
+	}
+	base := []string{"inspect", "deploy", "test-app", "-n", "kdiag-test"}
+	rows := []row{
+		{"resources+yaml composes", append(base, "--resources", "--yaml"), true, ""},
+		{"spec+yaml composes", append(base, "--spec", "--yaml"), true, ""},
+		{"az+yaml composes", append(base, "--az", "--yaml"), true, ""},
+		{"resources+spec is mutex", append(base, "--resources", "--spec"), false, "mutually exclusive"},
+		{"resources+az is mutex", append(base, "--resources", "--az"), false, "mutually exclusive"},
+		{"spec+az is mutex", append(base, "--spec", "--az"), false, "mutually exclusive"},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			out, errOut, code := run(r.args...)
+			if r.wantOK && code != 0 {
+				t.Fatalf("expected exit 0, got %d\nstdout: %s\nstderr: %s", code, out, errOut)
+			}
+			if !r.wantOK && code == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s", out)
+			}
+			if !r.wantOK && !strings.Contains(errOut, r.wantInErr) {
+				t.Errorf("expected stderr to contain %q, got: %s", r.wantInErr, errOut)
+			}
+		})
 	}
 }
 
@@ -708,14 +814,14 @@ func TestInspectDeploy_Spec_YAML(t *testing.T) {
 	}
 }
 
-// YAML flag combined with --az must error.
-func TestInspectDeploy_YAML_NotWithAZ(t *testing.T) {
-	_, errOut, code := run("inspect", "deploy", "--az", "--yaml", "-n", "kdiag-test", "test-app")
-	if code == 0 {
-		t.Error("expected non-zero exit when --yaml is combined with --az")
+// --az + --yaml emits the AZ view as a YAML doc on a deployment too.
+func TestInspectDeploy_AZ_YAML(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "--az", "--yaml", "-n", "kdiag-test", "test-app")
+	if code != 0 {
+		t.Fatalf("expected exit 0 for --az --yaml on deploy, got %d\nstdout: %s", code, out)
 	}
-	if !strings.Contains(errOut, "--yaml cannot be combined with --az") {
-		t.Errorf("expected '--yaml cannot be combined with --az' in stderr:\n%s", errOut)
+	if !strings.Contains(out, "placements:") || !strings.Contains(out, "zoneSummary:") {
+		t.Errorf("expected `placements:` and `zoneSummary:` in YAML output:\n%s", out)
 	}
 }
 

@@ -103,14 +103,22 @@ func runInspectDeploy(args []string) {
 		}
 	}
 
-	// --yaml is incompatible with --az.
-	if showYAML && showAZ {
-		fmt.Fprintln(os.Stderr, "Error: --yaml cannot be combined with --az")
+	// --resources/--spec/--az are view selectors (mutex); --yaml is a format
+	// flag that composes with any view.
+	if showAZ && (*showResources || showSpec) {
+		fmt.Fprintln(os.Stderr, "Error: --az is mutually exclusive with --resources/--spec (all select a view)")
 		os.Exit(1)
 	}
 
 	if showYAML {
 		switch {
+		case showAZ:
+			labelSel := metav1.FormatLabelSelector(d.Spec.Selector)
+			pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(labelSel))
+			if err != nil {
+				cli.Fatal(fmt.Errorf("list pods: %w", err))
+			}
+			emitAZYAML(env, ctx, pods.Items)
 		case showSpec:
 			emitYAML(d.Spec.Template.Spec)
 		case *showResources:
