@@ -135,8 +135,8 @@ func TestWalkYMLPath_ArrayWithNameAnnotation(t *testing.T) {
 	}
 	got := walkYMLPath(obj, "", "", "*imagepull*", true)
 	want := []string{
-		"# name=app\n.spec.template.spec.containers[].imagePullPolicy",
-		"# name=sidecar\n.spec.template.spec.containers[].imagePullPolicy",
+		"# name=app\n.spec.template.spec.containers[0].imagePullPolicy",
+		"# name=sidecar\n.spec.template.spec.containers[1].imagePullPolicy",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("array w/ name annotation: got %v, want %v", got, want)
@@ -158,7 +158,7 @@ func TestWalkYMLPath_ArrayWithoutNameField(t *testing.T) {
 	}
 	// And a value-mode search inside the array should not get an annotation.
 	gotVal := walkYMLPath(obj, "", "", "foregroundDeletion", false)
-	wantVal := []string{".metadata.finalizers[]"}
+	wantVal := []string{".metadata.finalizers[0]"}
 	if !reflect.DeepEqual(gotVal, wantVal) {
 		t.Fatalf("array w/o name (value match): got %v, want %v", gotVal, wantVal)
 	}
@@ -232,14 +232,17 @@ func TestWalkYMLPath_SingleNamedElementOmitsAnnotation(t *testing.T) {
 		},
 	}
 	got := walkYMLPath(obj, "", "", "*imagepull*", true)
-	want := []string{".spec.template.spec.containers[].imagePullPolicy"}
+	want := []string{".spec.template.spec.containers[0].imagePullPolicy"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("single named element: got %v, want %v", got, want)
 	}
 }
 
 func TestWalkYMLPath_DedupIdenticalLines(t *testing.T) {
-	// Unnamed array siblings that yield the same path collapse to one line.
+	// With concrete indices, unnamed array siblings now emit different paths
+	// even if their structure is identical, so dedup only happens on exact
+	// matches. This test verifies that three matching elements at different
+	// indices are all reported (no dedup across indices).
 	obj := map[string]any{
 		"spec": map[string]any{
 			"tolerations": []any{
@@ -250,7 +253,11 @@ func TestWalkYMLPath_DedupIdenticalLines(t *testing.T) {
 		},
 	}
 	got := walkYMLPath(obj, "", "", "Exists", false)
-	want := []string{".spec.tolerations[].operator"}
+	want := []string{
+		".spec.tolerations[0].operator",
+		".spec.tolerations[1].operator",
+		".spec.tolerations[2].operator",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("dedup identical lines: got %v, want %v", got, want)
 	}
@@ -272,9 +279,10 @@ func TestWalkYMLPath_MultilineValueMatch(t *testing.T) {
 
 func TestWalkYMLPath_DuplicateContainerNameDedups(t *testing.T) {
 	// Two containers with the same name (invalid k8s, but the walker should
-	// not crash on Unstructured input that happens to carry it). The dedup
-	// path collapses identical blocks; this test locks that behavior in so a
-	// later refactor doesn't accidentally produce a panic or different output.
+	// not crash on Unstructured input that happens to carry it). With concrete
+	// indices, the two elements emit different paths ([0] vs [1]) even though
+	// they have the same name. Dedup only collapses consecutive exact matches,
+	// not elements at different indices. This test locks that behavior in.
 	obj := map[string]any{
 		"spec": map[string]any{
 			"containers": []any{
@@ -284,7 +292,10 @@ func TestWalkYMLPath_DuplicateContainerNameDedups(t *testing.T) {
 		},
 	}
 	got := walkYMLPath(obj, "", "", "*imagepull*", true)
-	want := []string{"# name=app\n.spec.containers[].imagePullPolicy"}
+	want := []string{
+		"# name=app\n.spec.containers[0].imagePullPolicy",
+		"# name=app\n.spec.containers[1].imagePullPolicy",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("duplicate container name: got %v, want %v", got, want)
 	}
@@ -317,7 +328,7 @@ func TestWalkYMLPath_SkipsManagedFields(t *testing.T) {
 		},
 	}
 	got := walkYMLPath(obj, "", "", "image", true)
-	want := []string{".spec.containers[].image"}
+	want := []string{".spec.containers[0].image"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("managedFields not skipped: got %v, want %v", got, want)
 	}
@@ -336,5 +347,41 @@ func TestWalkYMLPath_BracketKeyForSpecialChars(t *testing.T) {
 	want := `.metadata.annotations["deployment.kubernetes.io/revision"]`
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("special-char key: got %v, want %q", got, want)
+	}
+}
+
+func TestWalkYMLPath_ConcreteIndexes(t *testing.T) {
+	obj := map[string]any{
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{
+					"name": "api",
+					"resources": map[string]any{
+						"limits": map[string]any{"memory": "64Mi"},
+					},
+				},
+				map[string]any{
+					"name": "sidecar",
+					"resources": map[string]any{
+						"limits": map[string]any{"memory": "32Mi"},
+					},
+				},
+				map[string]any{
+					"name": "worker",
+					"resources": map[string]any{
+						"limits": map[string]any{"memory": "16Mi"},
+					},
+				},
+			},
+		},
+	}
+	got := walkYMLPath(obj, "", "", "memory", true)
+	want := []string{
+		"# name=api\n.spec.containers[0].resources.limits.memory",
+		"# name=sidecar\n.spec.containers[1].resources.limits.memory",
+		"# name=worker\n.spec.containers[2].resources.limits.memory",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }

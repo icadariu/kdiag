@@ -95,8 +95,8 @@ func runInspectYMLPath(env *kube.KubeEnv, kind, name, selector, needle string) {
 // unstructured.Object), accumulating one line per matching key or scalar
 // value.
 //
-// path is the yq-compatible path built so far; array elements use `[]`
-// rather than `[N]` so the emitted path is directly yq-pipeable (iterate).
+// path is the yq-compatible path built so far; array elements use `[N]`
+// (concrete index) so callers can directly reference the element that matched.
 // arrayCtx is the most recent enclosing array element's `name` field —
 // when set, the line is preceded by a `# name=<n>` header for the regroup
 // pass to consume. Identical emitted lines are deduplicated (siblings under
@@ -153,12 +153,12 @@ func walkYMLPathInto(node any, path, arrayCtx string, match func(string) bool, o
 			walkYMLPathInto(v[k], childPath, arrayCtx, match, out)
 		}
 	case []any:
-		childPath := path + "[]"
-		// Name annotation is only useful when there's more than one
-		// element to disambiguate — a single-container deployment has
-		// nothing to disambiguate, so suppress it.
+		// Name annotation is only useful when there's more than one element
+		// to disambiguate — a single-container deployment has nothing to
+		// disambiguate, so suppress it.
 		multi := len(v) > 1
-		for _, elem := range v {
+		for idx, elem := range v {
+			childPath := fmt.Sprintf("%s[%d]", path, idx)
 			childCtx := arrayCtx
 			if multi {
 				if m, ok := elem.(map[string]any); ok {
