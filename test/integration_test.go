@@ -1692,7 +1692,7 @@ func TestNestedHelp(t *testing.T) {
 			args:     []string{"inspect", "deploy", "-h"},
 			wantCode: 0,
 			// YAML-mode flags must be advertised in deploy help.
-			contains: []string{"--namespace", "--resources", "--spec", "Examples:"},
+			contains: []string{"--namespace", "--resources", "--spec", "--yaml", "Examples:"},
 		},
 		{
 			name:     "inspect node -h",

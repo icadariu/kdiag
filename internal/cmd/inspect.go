@@ -294,22 +294,6 @@ func emitYAML(v any) {
 	fmt.Print(string(y))
 }
 
-// containerResourceEntry is the per-container shape emitted by --resources:
-// `{name, resources}`, matching `yq '.spec.containers | map({"name": .name,
-// "resources": .resources})'`.
-type containerResourceEntry struct {
-	Name      string                      `json:"name"`
-	Resources corev1.ResourceRequirements `json:"resources"`
-}
-
-func containerResourceList(containers []corev1.Container) []containerResourceEntry {
-	out := make([]containerResourceEntry, 0, len(containers))
-	for _, c := range containers {
-		out = append(out, containerResourceEntry{Name: c.Name, Resources: c.Resources})
-	}
-	return out
-}
-
 // hasFlag reports whether name appears in args either as a bare token
 // (`--spec`) or with an inline value (`--spec=...`).
 func hasFlag(args []string, name string) bool {
