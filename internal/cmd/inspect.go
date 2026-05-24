@@ -49,10 +49,10 @@ func RunInspect(args []string) {
 		os.Exit(1)
 	}
 
-	// --find-path short-circuits the per-kind handlers with a generic
+	// --yml-path short-circuits the per-kind handlers with a generic
 	// dynamic-client walker. Parsing happens here (rather than in commonFlags)
 	// because the walker is kind-agnostic and we want CRD support.
-	if needle, name, selector, ns, ok := extractFindPathArgs(handlerArgs); ok {
+	if needle, name, selector, ns, ok := extractYMLPathArgs(handlerArgs); ok {
 		env, err := kube.NewKubeEnv(kube.KubeFlags{Namespace: ns})
 		if err != nil {
 			cli.Fatal(err)
@@ -89,7 +89,7 @@ func kindIndex(args []string) int {
 	valueFlags := map[string]bool{
 		"--namespace":  true, "-n": true,
 		"--label":      true, "-l": true,
-		"--find-path":  true,
+		"--yml-path":   true,
 	}
 	for i := 0; i < len(args); i++ {
 		if valueFlags[args[i]] {
@@ -103,36 +103,36 @@ func kindIndex(args []string) int {
 	return -1
 }
 
-// extractFindPathArgs scans handlerArgs (after the kind has been removed)
-// for `--find-path <v>` / `--find-path=<v>` together with `-n/--namespace`
+// extractYMLPathArgs scans handlerArgs (after the kind has been removed)
+// for `--yml-path <v>` / `--yml-path=<v>` together with `-n/--namespace`
 // and `-l/--label`. Remaining non-flag tokens become the positional name.
 //
-// Returns ok=false when --find-path is absent, so the caller falls through
+// Returns ok=false when --yml-path is absent, so the caller falls through
 // to the existing per-kind handlers.
 //
 // Errors (missing/empty value, unknown flag, both name+selector, multiple
-// names) are fatal once --find-path has been seen — they would also fail
+// names) are fatal once --yml-path has been seen — they would also fail
 // inside the per-kind handler, but here we fail earlier because the kind
 // switch has been bypassed. Whitespace-only needles are rejected too:
 // they would otherwise match any whitespace-containing scalar.
-func extractFindPathArgs(handlerArgs []string) (needle, name, selector, ns string, ok bool) {
+func extractYMLPathArgs(handlerArgs []string) (needle, name, selector, ns string, ok bool) {
 	var (
 		rest     []string
-		seen     bool   // --find-path was present (even with empty value)
-		unknown  string // first unknown -flag seen; only fatal if --find-path is set
+		seen     bool   // --yml-path was present (even with empty value)
+		unknown  string // first unknown -flag seen; only fatal if --yml-path is set
 	)
 	for i := 0; i < len(handlerArgs); i++ {
 		a := handlerArgs[i]
 		switch {
-		case a == "--find-path":
+		case a == "--yml-path":
 			if i+1 >= len(handlerArgs) {
-				cli.Fatal(fmt.Errorf("--find-path requires a value"))
+				cli.Fatal(fmt.Errorf("--yml-path requires a value"))
 			}
 			needle = handlerArgs[i+1]
 			seen = true
 			i++
-		case strings.HasPrefix(a, "--find-path="):
-			needle = strings.TrimPrefix(a, "--find-path=")
+		case strings.HasPrefix(a, "--yml-path="):
+			needle = strings.TrimPrefix(a, "--yml-path=")
 			seen = true
 		case a == "-n" || a == "--namespace":
 			if i+1 >= len(handlerArgs) {
@@ -152,7 +152,7 @@ func extractFindPathArgs(handlerArgs []string) (needle, name, selector, ns strin
 			selector = strings.TrimPrefix(a, "--label=")
 		case strings.HasPrefix(a, "-"):
 			// Stash for later. We only know it's "unknown" relative to the
-			// --find-path handler; if --find-path is absent we fall through
+			// --yml-path handler; if --yml-path is absent we fall through
 			// to per-kind handlers, which parse and reject these themselves.
 			if unknown == "" {
 				unknown = a
@@ -165,10 +165,18 @@ func extractFindPathArgs(handlerArgs []string) (needle, name, selector, ns strin
 		return "", "", "", "", false
 	}
 	if strings.TrimSpace(needle) == "" {
-		cli.Fatal(fmt.Errorf("--find-path requires a non-empty value"))
+		cli.Fatal(fmt.Errorf("--yml-path requires a non-empty value"))
+	}
+	switch unknown {
+	case "--yaml", "--resources", "--spec", "--az":
+		cli.Fatal(fmt.Errorf(
+			"--yml-path is mutually exclusive with %s (each selects a view). "+
+				"Drop one of them, or run `kdiag inspect <kind> -h` for usage.", unknown))
 	}
 	if unknown != "" {
-		cli.Fatal(fmt.Errorf("--find-path: unknown flag %q (only -n/--namespace and -l/--label are accepted alongside)", unknown))
+		cli.Fatal(fmt.Errorf(
+			"--yml-path: unknown flag %q (only -n/--namespace and -l/--label compose with --yml-path; "+
+				"--yaml, --resources, --spec, --az are mutually exclusive)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
@@ -177,10 +185,10 @@ func extractFindPathArgs(handlerArgs []string) (needle, name, selector, ns strin
 		name = rest[0]
 	}
 	if name != "" && selector != "" {
-		cli.Fatal(fmt.Errorf("--find-path: provide either <name> or --label/-l (not both)"))
+		cli.Fatal(fmt.Errorf("--yml-path: provide either <name> or --label/-l (not both)"))
 	}
 	if name == "" && selector == "" {
-		cli.Fatal(fmt.Errorf("--find-path: provide either <name> or --label/-l"))
+		cli.Fatal(fmt.Errorf("--yml-path: provide either <name> or --label/-l"))
 	}
 	return needle, name, selector, ns, true
 }
@@ -288,7 +296,7 @@ func dashIfEmpty(s string) string {
 }
 
 // emitYAML marshals v to YAML on stdout. Used wherever --yaml is set
-// (alone or combined with --resources / --spec / --find-path) to produce
+// (alone or combined with --resources / --spec / --yml-path) to produce
 // stdout that is valid YAML (yq-pipeable, no banners).
 func emitYAML(v any) {
 	y, err := yaml.Marshal(v)
