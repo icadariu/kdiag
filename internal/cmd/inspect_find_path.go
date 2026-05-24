@@ -13,8 +13,8 @@ import (
 	"example.com/kdiag/internal/kube"
 )
 
-// runInspectYAMLField implements the generic, kind-agnostic search behind
-// `kdiag inspect <kind> [<name>|-l <sel>] --yaml-field <needle>`.
+// runInspectFindPath implements the generic, kind-agnostic search behind
+// `kdiag inspect <kind> [<name>|-l <sel>] --find-path <needle>`.
 //
 // It bypasses the kind-specific handlers entirely: resources are fetched via
 // the dynamic client as Unstructured, then walked as nested maps/slices so
@@ -29,12 +29,12 @@ import (
 //
 // Key-match recursion: when a needle matches a key, the walker emits the
 // match AND descends into the value, so a common needle like `name` will
-// surface every nested occurrence. This is intentional — `--yaml-field`
+// surface every nested occurrence. This is intentional — `--find-path`
 // is grep-like, not "deepest-match-only".
 //
 // Smart-case matching: an all-lowercase needle is case-insensitive; any
 // uppercase character makes the match case-sensitive.
-func runInspectYAMLField(env *kube.KubeEnv, kind, name, selector, needle string) {
+func runInspectFindPath(env *kube.KubeEnv, kind, name, selector, needle string) {
 	resolved, err := kube.ResolveResource(env.Mapper, kind)
 	if err != nil {
 		cli.Fatal(fmt.Errorf("resolve %s: %w", kind, err))
@@ -74,7 +74,7 @@ func runInspectYAMLField(env *kube.KubeEnv, kind, name, selector, needle string)
 	header := name == ""
 	for i := range items {
 		obj := items[i]
-		matches := walkYAMLField(obj.Object, "", "", needle, smart)
+		matches := walkFindPath(obj.Object, "", "", needle, smart)
 		if len(matches) == 0 {
 			continue
 		}
@@ -93,7 +93,7 @@ func runInspectYAMLField(env *kube.KubeEnv, kind, name, selector, needle string)
 	}
 }
 
-// walkYAMLField walks node (a map[string]any or []any from
+// walkFindPath walks node (a map[string]any or []any from
 // unstructured.Object), accumulating one line per matching key or scalar
 // value.
 //
@@ -105,9 +105,9 @@ func runInspectYAMLField(env *kube.KubeEnv, kind, name, selector, needle string)
 // Identical emitted lines are deduplicated (siblings under an unnamed
 // array that produce the same path+value collapse to one). Pass "" at the
 // top level.
-func walkYAMLField(node any, path, arrayCtx, needle string, smart bool) []string {
+func walkFindPath(node any, path, arrayCtx, needle string, smart bool) []string {
 	var out []string
-	walkYAMLFieldInto(node, path, arrayCtx, needle, smart, &out)
+	walkFindPathInto(node, path, arrayCtx, needle, smart, &out)
 	return dedupStable(out)
 }
 
@@ -129,7 +129,7 @@ func dedupStable(in []string) []string {
 	return out
 }
 
-func walkYAMLFieldInto(node any, path, arrayCtx, needle string, smart bool, out *[]string) {
+func walkFindPathInto(node any, path, arrayCtx, needle string, smart bool, out *[]string) {
 	switch v := node.(type) {
 	case map[string]any:
 		keys := make([]string, 0, len(v))
@@ -142,7 +142,7 @@ func walkYAMLFieldInto(node any, path, arrayCtx, needle string, smart bool, out 
 			if substrMatch(k, needle, smart) {
 				*out = append(*out, emitLine(childPath, v[k], arrayCtx))
 			}
-			walkYAMLFieldInto(v[k], childPath, arrayCtx, needle, smart, out)
+			walkFindPathInto(v[k], childPath, arrayCtx, needle, smart, out)
 		}
 	case []any:
 		childPath := path + "[]"
@@ -159,7 +159,7 @@ func walkYAMLFieldInto(node any, path, arrayCtx, needle string, smart bool, out 
 					}
 				}
 			}
-			walkYAMLFieldInto(elem, childPath, childCtx, needle, smart, out)
+			walkFindPathInto(elem, childPath, childCtx, needle, smart, out)
 		}
 	default:
 		if v == nil {
@@ -215,8 +215,8 @@ func formatYQValue(v any) string {
 }
 
 // scalarString stringifies a scalar for value-side matching. Booleans and
-// numbers stringify to their canonical form so `--yaml-field true` and
-// `--yaml-field 3` work as users expect.
+// numbers stringify to their canonical form so `--find-path true` and
+// `--find-path 3` work as users expect.
 func scalarString(v any) string {
 	switch x := v.(type) {
 	case string:

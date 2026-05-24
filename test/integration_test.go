@@ -317,12 +317,12 @@ func TestInspect_SpecOnNonDeploy_Errors(t *testing.T) {
 	}
 }
 
-// ── inspect --yaml-field ─────────────────────────────────────────────────────
+// ── inspect --find-path ─────────────────────────────────────────────────────
 
 // Search for a value (case-sensitive: needle has uppercase).
 // `kdiag-static` runs at QoS class Burstable thanks to its requests+limits.
-func TestInspectYAMLField_PodValue(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "Burstable")
+func TestInspectFindPath_PodValue(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "Burstable")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -336,8 +336,8 @@ func TestInspectYAMLField_PodValue(t *testing.T) {
 // `test-app` fixture has a single container, so the `# name=` annotation
 // is suppressed (nothing to disambiguate). Multi-container annotation is
 // covered by unit tests.
-func TestInspectYAMLField_DeployKey_SmartCase(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--yaml-field", "imagepull")
+func TestInspectFindPath_DeployKey_SmartCase(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--find-path", "imagepull")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -350,8 +350,8 @@ func TestInspectYAMLField_DeployKey_SmartCase(t *testing.T) {
 }
 
 // Label-selector mode prints one block per matched resource, prefixed with the kind/name header.
-func TestInspectYAMLField_LabelSelector(t *testing.T) {
-	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--yaml-field", "qosClass")
+func TestInspectFindPath_LabelSelector(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--find-path", "qosClass")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -364,10 +364,10 @@ func TestInspectYAMLField_LabelSelector(t *testing.T) {
 	}
 }
 
-// Cluster-scoped kind: nodes are namespace-less; --yaml-field must still work.
-func TestInspectYAMLField_ClusterScopedNode(t *testing.T) {
+// Cluster-scoped kind: nodes are namespace-less; --find-path must still work.
+func TestInspectFindPath_ClusterScopedNode(t *testing.T) {
 	// kind clusters set kubernetes.io/hostname on every node; case-sensitive needle.
-	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--yaml-field", "hostname")
+	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--find-path", "hostname")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -379,8 +379,8 @@ func TestInspectYAMLField_ClusterScopedNode(t *testing.T) {
 }
 
 // No matches → exit 0 with empty stdout (grep semantics).
-func TestInspectYAMLField_NoMatchExitsZero(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "ZZZ-no-such-string-ZZZ")
+func TestInspectFindPath_NoMatchExitsZero(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "ZZZ-no-such-string-ZZZ")
 	if code != 0 {
 		t.Fatalf("expected exit 0 with no matches, got %d", code)
 	}
@@ -390,23 +390,23 @@ func TestInspectYAMLField_NoMatchExitsZero(t *testing.T) {
 }
 
 // Providing neither <name> nor -l errors.
-func TestInspectYAMLField_MissingTarget(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--yaml-field", "qos")
+func TestInspectFindPath_MissingTarget(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--find-path", "qos")
 	if code == 0 {
 		t.Error("expected non-zero exit when neither name nor selector is given")
 	}
-	if !strings.Contains(errOut, "--yaml-field") {
-		t.Errorf("expected `--yaml-field` in error stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--find-path") {
+		t.Errorf("expected `--find-path` in error stderr:\n%s", errOut)
 	}
 }
 
-// `--yaml-field=` (empty value) must error explicitly rather than silently
+// `--find-path=` (empty value) must error explicitly rather than silently
 // falling through to the per-kind handler and producing a confusing
 // "unknown flag" message.
-func TestInspectYAMLField_EmptyValueErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field=")
+func TestInspectFindPath_EmptyValueErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path=")
 	if code == 0 {
-		t.Error("expected non-zero exit for empty --yaml-field value")
+		t.Error("expected non-zero exit for empty --find-path value")
 	}
 	if !strings.Contains(errOut, "non-empty") {
 		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
@@ -415,22 +415,22 @@ func TestInspectYAMLField_EmptyValueErrors(t *testing.T) {
 
 // Whitespace-only needle is rejected too — it would otherwise match any
 // scalar containing the same whitespace.
-func TestInspectYAMLField_WhitespaceNeedleErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "   ")
+func TestInspectFindPath_WhitespaceNeedleErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "   ")
 	if code == 0 {
-		t.Error("expected non-zero exit for whitespace-only --yaml-field value")
+		t.Error("expected non-zero exit for whitespace-only --find-path value")
 	}
 	if !strings.Contains(errOut, "non-empty") {
 		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
 	}
 }
 
-// Unknown flags alongside --yaml-field error with a clear message instead
+// Unknown flags alongside --find-path error with a clear message instead
 // of being silently dropped.
-func TestInspectYAMLField_UnknownFlagErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "qos", "--bogus")
+func TestInspectFindPath_UnknownFlagErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "qos", "--bogus")
 	if code == 0 {
-		t.Error("expected non-zero exit for unknown flag alongside --yaml-field")
+		t.Error("expected non-zero exit for unknown flag alongside --find-path")
 	}
 	if !strings.Contains(errOut, "unknown flag") {
 		t.Errorf("expected `unknown flag` in error stderr:\n%s", errOut)
@@ -439,8 +439,8 @@ func TestInspectYAMLField_UnknownFlagErrors(t *testing.T) {
 
 // Multi-line scalar values must render Go-quoted so the path:value line
 // stays single-line and yq-pipeable.
-func TestInspectYAMLField_MultilineConfigMapValue(t *testing.T) {
-	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--yaml-field", "needle-line-two")
+func TestInspectFindPath_MultilineConfigMapValue(t *testing.T) {
+	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--find-path", "needle-line-two")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -457,8 +457,8 @@ func TestInspectYAMLField_MultilineConfigMapValue(t *testing.T) {
 
 // CRD support — the dynamic client must walk a user-defined kind the same
 // way it walks built-ins. The Widget fixture exercises this.
-func TestInspectYAMLField_CRD(t *testing.T) {
-	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--yaml-field", "renewBefore")
+func TestInspectFindPath_CRD(t *testing.T) {
+	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--find-path", "renewBefore")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}

@@ -49,15 +49,15 @@ func RunInspect(args []string) {
 		os.Exit(1)
 	}
 
-	// --yaml-field short-circuits the per-kind handlers with a generic
+	// --find-path short-circuits the per-kind handlers with a generic
 	// dynamic-client walker. Parsing happens here (rather than in commonFlags)
 	// because the walker is kind-agnostic and we want CRD support.
-	if needle, name, selector, ns, ok := extractYAMLFieldArgs(handlerArgs); ok {
+	if needle, name, selector, ns, ok := extractFindPathArgs(handlerArgs); ok {
 		env, err := kube.NewKubeEnv(kube.KubeFlags{Namespace: ns})
 		if err != nil {
 			cli.Fatal(err)
 		}
-		runInspectYAMLField(env, kind, name, selector, needle)
+		runInspectFindPath(env, kind, name, selector, needle)
 		return
 	}
 
@@ -89,7 +89,7 @@ func kindIndex(args []string) int {
 	valueFlags := map[string]bool{
 		"--namespace":  true, "-n": true,
 		"--label":      true, "-l": true,
-		"--yaml-field": true,
+		"--find-path":  true,
 	}
 	for i := 0; i < len(args); i++ {
 		if valueFlags[args[i]] {
@@ -103,36 +103,36 @@ func kindIndex(args []string) int {
 	return -1
 }
 
-// extractYAMLFieldArgs scans handlerArgs (after the kind has been removed)
-// for `--yaml-field <v>` / `--yaml-field=<v>` together with `-n/--namespace`
+// extractFindPathArgs scans handlerArgs (after the kind has been removed)
+// for `--find-path <v>` / `--find-path=<v>` together with `-n/--namespace`
 // and `-l/--label`. Remaining non-flag tokens become the positional name.
 //
-// Returns ok=false when --yaml-field is absent, so the caller falls through
+// Returns ok=false when --find-path is absent, so the caller falls through
 // to the existing per-kind handlers.
 //
 // Errors (missing/empty value, unknown flag, both name+selector, multiple
-// names) are fatal once --yaml-field has been seen — they would also fail
+// names) are fatal once --find-path has been seen — they would also fail
 // inside the per-kind handler, but here we fail earlier because the kind
 // switch has been bypassed. Whitespace-only needles are rejected too:
 // they would otherwise match any whitespace-containing scalar.
-func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns string, ok bool) {
+func extractFindPathArgs(handlerArgs []string) (needle, name, selector, ns string, ok bool) {
 	var (
 		rest     []string
-		seen     bool   // --yaml-field was present (even with empty value)
-		unknown  string // first unknown -flag seen; only fatal if --yaml-field is set
+		seen     bool   // --find-path was present (even with empty value)
+		unknown  string // first unknown -flag seen; only fatal if --find-path is set
 	)
 	for i := 0; i < len(handlerArgs); i++ {
 		a := handlerArgs[i]
 		switch {
-		case a == "--yaml-field":
+		case a == "--find-path":
 			if i+1 >= len(handlerArgs) {
-				cli.Fatal(fmt.Errorf("--yaml-field requires a value"))
+				cli.Fatal(fmt.Errorf("--find-path requires a value"))
 			}
 			needle = handlerArgs[i+1]
 			seen = true
 			i++
-		case strings.HasPrefix(a, "--yaml-field="):
-			needle = strings.TrimPrefix(a, "--yaml-field=")
+		case strings.HasPrefix(a, "--find-path="):
+			needle = strings.TrimPrefix(a, "--find-path=")
 			seen = true
 		case a == "-n" || a == "--namespace":
 			if i+1 >= len(handlerArgs) {
@@ -152,7 +152,7 @@ func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns stri
 			selector = strings.TrimPrefix(a, "--label=")
 		case strings.HasPrefix(a, "-"):
 			// Stash for later. We only know it's "unknown" relative to the
-			// --yaml-field handler; if --yaml-field is absent we fall through
+			// --find-path handler; if --find-path is absent we fall through
 			// to per-kind handlers, which parse and reject these themselves.
 			if unknown == "" {
 				unknown = a
@@ -165,10 +165,10 @@ func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns stri
 		return "", "", "", "", false
 	}
 	if strings.TrimSpace(needle) == "" {
-		cli.Fatal(fmt.Errorf("--yaml-field requires a non-empty value"))
+		cli.Fatal(fmt.Errorf("--find-path requires a non-empty value"))
 	}
 	if unknown != "" {
-		cli.Fatal(fmt.Errorf("--yaml-field: unknown flag %q (only -n/--namespace and -l/--label are accepted alongside)", unknown))
+		cli.Fatal(fmt.Errorf("--find-path: unknown flag %q (only -n/--namespace and -l/--label are accepted alongside)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
@@ -177,10 +177,10 @@ func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns stri
 		name = rest[0]
 	}
 	if name != "" && selector != "" {
-		cli.Fatal(fmt.Errorf("--yaml-field: provide either <name> or --label/-l (not both)"))
+		cli.Fatal(fmt.Errorf("--find-path: provide either <name> or --label/-l (not both)"))
 	}
 	if name == "" && selector == "" {
-		cli.Fatal(fmt.Errorf("--yaml-field: provide either <name> or --label/-l"))
+		cli.Fatal(fmt.Errorf("--find-path: provide either <name> or --label/-l"))
 	}
 	return needle, name, selector, ns, true
 }
