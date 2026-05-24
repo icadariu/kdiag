@@ -45,14 +45,16 @@ instead of container state.
 
 `--yaml` emits a single yq-safe YAML document instead of text.
 `--resources` narrows the output to per-container resource info (text or YAML).
+`--yml-path <keyword>` finds all paths matching the keyword.
 `--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
-mutually exclusive with `--resources` / `--spec` / `--find-path` since each
+mutually exclusive with `--resources` / `--yml-path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
 | `--yaml` | Emit a single yq-safe YAML document instead of text |
 | `--resources` | Narrow output to per-container resource info (text or YAML) |
+| `--yml-path <keyword>` | Find all paths matching the keyword in the YAML |
 
 Output includes init containers and sidecar containers (initContainer with
 `restartPolicy: Always`, k8s 1.28+), labeled `Init Container:` / `Sidecar Container:`
@@ -124,8 +126,9 @@ Workload summary fields:
 `{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
 `--spec` (deploy only) emits the pod template spec (text or YAML).
 `--resources` narrows output to per-container resource info (text or YAML).
+`--yml-path <keyword>` finds all paths matching the keyword.
 `--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
-mutually exclusive with `--resources` / `--spec` / `--find-path` since each
+mutually exclusive with `--resources` / `--spec` / `--yml-path` since each
 of those selects a different view.
 
 | Flag | Description |
@@ -133,6 +136,7 @@ of those selects a different view.
 | `--yaml` | Emit a single yq-safe YAML document (kdiag-shaped) |
 | `--spec` | Emit the pod template spec (deploy only; errors on other kinds) |
 | `--resources` | Narrow output to per-container resource info (text or YAML) |
+| `--yml-path <keyword>` | Find all paths matching the keyword in the YAML |
 
 For `inspect deploy`, `--resources` operates on the deployment template (no
 pod lookup). For `ds`/`sts`/`rs`, `--resources` keeps the per-pod text-block
@@ -203,29 +207,21 @@ kdiag inspect node
 
 ---
 
-### `inspect --find-path`
+### `inspect --yml-path`
 
-Find the `yq` path of any key or value inside a resource's YAML. Useful when
-you know the keyword (`Burstable`, `imagePullPolicy`, …) but not where it
+Find the `yq` path of any key inside a resource's YAML. Useful when
+you know the keyword (`Burstable`, `memory`, `imagePullPolicy`, …) but not where it
 sits in the object. Works for **every** kind the cluster exposes, including
 CRDs.
 
-Output is `<yq-path>: <value>` per line. Array elements render the path
-with a generalized `[]` (yq-pipeable, iterates all elements). When the
-array has more than one element **and** each element carries a `name`
-field (containers, ports, volumes, …), each match is preceded by a
-`# name=<n>` header line so siblings stay distinguishable. Single-element
-*named* arrays suppress the annotation (nothing to disambiguate);
-unnamed arrays never had one. Identical blocks are deduplicated.
+Output is paths only (one per line). Array elements render with concrete
+indices (e.g., `[0]`, `[1]`) rather than generalized `[]`. When a resource has
+named arrays (containers, ports, volumes, …) with multiple elements, matches
+are grouped under a `<name>:` header for clarity. Single-element or unnamed
+arrays have no header.
 
-Multi-line string values (e.g. ConfigMap `data` keys with embedded
-newlines) render Go-quoted (`"line1\nline2"`) so each match stays on one
-physical line — re-run `yq <path>` on the raw resource to read the value
-unescaped.
-
-Match semantics: by default the needle must equal the **full** key or
-**full** scalar value — so `--find-path name` matches the key `name` and
-a value `"name"`, but NOT `namespace`, `generateName`, or
+Match semantics: by default the needle must equal the **full** key —
+so `--yml-path name` matches the key `name` but NOT `namespace`, `generateName`, or
 `container-1-tiny`. Use `*` as a glob for fuzzier matches: `name*` (prefix),
 `*name` (suffix), `*name*` (substring). The whole string still has to match
 end-to-end.
@@ -233,7 +229,7 @@ end-to-end.
 Key-match recursion: when a needle matches a *key* the walker emits the
 match and continues descending into the value, so common needles like
 `*name*` or `*spec*` will surface every nested occurrence. This is
-intentional — `--find-path` is grep-like, not deepest-match-only.
+intentional — `--yml-path` is grep-like, not deepest-match-only.
 
 Smart-case matching, like ripgrep: an **all-lowercase** needle is
 case-insensitive; any uppercase character makes the match case-sensitive.
@@ -243,33 +239,39 @@ keys (`f:image`, `k:{"name":"..."}`, …) shadow real field names and would
 otherwise dominate every result.
 
 ```text
-kdiag inspect <kind> [<name> | -l <label>] --find-path <keyword>
+kdiag inspect <kind> [<name> | -l <label>] --yml-path <keyword>
 ```
 
 ```sh
-# Find the yq path of a value (case-sensitive — `Burstable` has uppercase)
-kdiag inspect pod my-pod --find-path Burstable
-# .status.qosClass: Burstable
+# Find the yq path of a key
+kdiag inspect pod my-pod --yml-path qosClass
+# .status.qosClass
 
 # Exact key match (no substring) — `name` does NOT match `namespace`
-kdiag inspect pod my-pod --find-path name
-# .metadata.name: my-pod
-# .spec.containers[].name: app
+kdiag inspect pod my-pod --yml-path name
+# .metadata.name
+# .spec.containers[0].name
 
 # Glob match for partial keys (multi-container deployment)
-kdiag inspect deploy my-deploy --find-path '*imagepull*'
-# # name=app
-# .spec.template.spec.containers[].imagePullPolicy: IfNotPresent
-# # name=sidecar
-# .spec.template.spec.containers[].imagePullPolicy: Always
+kdiag inspect deploy kdiag-multicont -n kdiag-test --yml-path memory
+# api:
+#   .spec.template.spec.containers[0].resources.limits.memory
+#   .spec.template.spec.containers[0].resources.requests.memory
+# sidecar:
+#   .spec.template.spec.containers[1].resources.limits.memory
+#   .spec.template.spec.containers[1].resources.requests.memory
 
 # Search across all pods matched by a selector
-kdiag inspect pod -l app=my-app --find-path qosClass
-# pod/my-app-7d4...-abcd:
-#   .status.qosClass: Burstable
+kdiag inspect pod -l app=test-app -n kdiag-test --yml-path image
+# Pod/test-app-6dd566fbff-jd2vw:
+#   .spec.containers[0].image
+#   .status.containerStatuses[0].image
+# Pod/test-app-6dd566fbff-xrg84:
+#   .spec.containers[0].image
+#   .status.containerStatuses[0].image
 
 # Works for CRDs too
-kdiag inspect certificates.cert-manager.io my-cert --find-path renewBefore
+kdiag inspect certificates.cert-manager.io my-cert --yml-path renewBefore
 ```
 
 ---
@@ -617,7 +619,7 @@ internal/
     inspect_deploy.go      # inspect deploy (YAML-mode flags on the pod template)
     inspect_workloads.go   # inspect ds / sts / rs
     inspect_node.go        # inspect node
-    inspect_find_path.go   # --find-path walker (shared across inspect kinds)
+    inspect_yml_path.go    # --yml-path walker (shared across inspect kinds)
     az_pods.go             # printAZTable helper for --az on inspect subcommands
     events.go              # events command
     diff.go                # diff command — diff rs + generic two-name diff

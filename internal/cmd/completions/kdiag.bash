@@ -32,7 +32,7 @@ _kdiag_count_positionals() {
     local i
     for ((i=start_idx; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--find-path|--since)
+            -n|--namespace|-l|--label|--yml-path|--since)
                 # Skip flag and its value
                 ((i++))
                 ;;
@@ -65,7 +65,7 @@ _kdiag_find_kind_idx() {
     local i
     for ((i=2; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--find-path)
+            -n|--namespace|-l|--label|--yml-path)
                 ((i++))
                 ;;
             -*)
@@ -96,7 +96,6 @@ _kdiag() {
     local diff_kinds="${sort_kinds}"
     local completion_shells="bash zsh"
     local shared_flags="--namespace -n --label -l"
-    local inspect_flags="${shared_flags} --resources --az --spec --yaml --find-path"
     local events_flags="--namespace -n --all-namespaces -A --since"
     local sort_flags="--namespace -n --all-namespaces -A"
 
@@ -119,6 +118,30 @@ _kdiag() {
     fi
 
     local cmd="${COMP_WORDS[1]}"
+
+    # Detect which view selector (if any) is already on the command line.
+    # Once a view selector is present, only suggest flags that compose with it
+    # — the others are mutually exclusive (each selects a view).
+    local view_seen=""
+    local _i
+    for ((_i=1; _i<COMP_CWORD; _i++)); do
+        case "${COMP_WORDS[_i]}" in
+            --yml-path)   view_seen=ymlpath ;;
+            --resources)  view_seen=resources ;;
+            --spec)       view_seen=spec ;;
+            --az)         view_seen=az ;;
+        esac
+    done
+
+    local inspect_flags
+    case "${view_seen}" in
+        ymlpath)    inspect_flags="${shared_flags} --yml-path" ;;
+        resources)  inspect_flags="${shared_flags} --resources --az --yaml" ;;
+        spec)       inspect_flags="${shared_flags} --spec --yaml" ;;
+        az)         inspect_flags="${shared_flags} --az --yaml" ;;
+        *)          inspect_flags="${shared_flags} --resources --az --spec --yaml --yml-path" ;;
+    esac
+
     case "${cmd}" in
         inspect)
             local kind_idx

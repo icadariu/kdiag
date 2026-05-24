@@ -25,12 +25,26 @@ func runInspectNode(args []string) {
 	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (ignored — node is cluster-scoped)")
 	var selector string
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
-	fs.Usage = func() { printInspectNodeHelp(os.Stderr, fs) }
+	fs.Usage = func() { printInspectNodeHelp(os.Stderr, fs, args) }
 
-	if cli.WantsHelp(args) {
-		printInspectNodeHelp(os.Stdout, fs)
-		return
+	// Check for help in args (it may not be the first element if other flags
+	// like --yml-path appear before -h).
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			printInspectNodeHelp(os.Stdout, fs, args)
+			return
+		}
 	}
+
+	// Only parse args that don't contain unregistered flags (like --yml-path).
+	// The dispatcher handles --yml-path before calling the handler, but we
+	// make an exception for help (above) to allow filtering help when --yml-path
+	// is present. Any remaining --yml-path is an error.
+	if cli.ViewFlagSeen(args) == "yml-path" {
+		fmt.Fprintln(os.Stderr, "Error: --yml-path is handled by the dispatcher and should not reach the handler")
+		os.Exit(1)
+	}
+
 	_ = fs.Parse(args)
 	rest := fs.Args()
 	selector = strings.TrimSpace(selector)
@@ -91,13 +105,24 @@ func printNodeBlock(n corev1.Node) {
 	cli.PrintKVBlock(os.Stdout, "    ", kube.AllocatableMap(n.Status.Allocatable))
 }
 
-func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet) {
+func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
+	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect node [<node-name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow zone for one node or a set of nodes.")
+	if seen == "yml-path" {
+		fmt.Fprintln(w, "\nView: --yml-path is set. Pass --yml-path <needle> with -n/-l only.")
+	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")
-	fmt.Fprintln(w, "  kdiag inspect node my-node")
-	fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a")
-	fmt.Fprintln(w, "  kdiag inspect node")
+	switch seen {
+	case "yml-path":
+		fmt.Fprintln(w, "  kdiag inspect node my-node --yml-path zone")
+		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a --yml-path taints")
+	default:
+		fmt.Fprintln(w, "  kdiag inspect node my-node")
+		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a")
+		fmt.Fprintln(w, "  kdiag inspect node")
+		fmt.Fprintln(w, "  kdiag inspect node my-node --yml-path zone")
+	}
 }

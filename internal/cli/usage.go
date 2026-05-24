@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // WantsHelp reports whether the first arg requests help (-h, --help, or "help").
@@ -51,9 +52,12 @@ Use "kdiag <command> -h" for more information about a command.
 `)
 }
 
-// PrintInspectUsage prints help for `kdiag inspect`, listing the kinds it
-// dispatches to.
-func PrintInspectUsage(w io.Writer) {
+// PrintInspectUsage prints help for `kdiag inspect`. args is the raw argv
+// (after the "inspect" token) so the help filters out flags that don't
+// compose with whatever view the user has already selected.
+func PrintInspectUsage(w io.Writer, args []string) {
+	seen := ViewFlagSeen(args)
+
 	fmt.Fprint(w, `Inspect Kubernetes resources.
 
 Available Subcommands:
@@ -66,32 +70,86 @@ Options:
   -n, --namespace        Namespace (defaults to current context)
   -l, --label            Label selector (pod, deploy, node)
   <partial-name>         Partial pod name match (pod only)
-  --yaml                 Emit a single yq-safe YAML document instead of text
-  --find-path <needle>   Walk the resource YAML and print every yq path whose
+`)
+	if showYAML(seen) {
+		fmt.Fprintln(w, "  --yaml                 Emit a single yq-safe YAML document instead of text")
+	}
+	if showYMLPath(seen) {
+		fmt.Fprint(w, `  --yml-path <needle>    Walk the resource YAML and print every yq path whose
                          key or value matches <needle>. Works for any kind including CRDs.
                          Default match is exact (full key or full value); use '*' as a
                          glob ('name*', '*name', '*name*') for prefix/suffix/substring.
                          Smart-case: lowercase needle is case-insensitive; uppercase
                          makes it case-sensitive. Compatible with --label.
-  --resources            Narrow output to container resources (text or YAML)
-  --spec                 Deploy only: emit .spec.template.spec (text or YAML)
-  --az                   Availability-zone placement (pod, deploy, ds, sts).
-                         Composes with --yaml; mutually exclusive with
-                         --resources / --spec / --find-path (each selects a view).
-
-Examples:
-  kdiag inspect pod my-pod
-  kdiag inspect pod my-pod --yaml | yq '.containers[].name'
-  kdiag inspect pod -l app=my-app --yaml | yq '.[0].name'
-  kdiag inspect pod my-pod --resources --yaml
-  kdiag inspect deploy my-deploy
-  kdiag inspect deploy my-deploy --yaml | yq '.pods | length'
-  kdiag inspect deploy my-deploy --spec
-  kdiag inspect pod my-pod --find-path Burstable        # find yq path of a value
-  kdiag inspect deploy my-deploy --find-path imagePull  # find yq path of a key
-
-Use "kdiag inspect <subcommand> -h" for details.
 `)
+	}
+	if showResources(seen) {
+		fmt.Fprintln(w, "  --resources            Narrow output to container resources (text or YAML)")
+	}
+	if showSpec(seen) {
+		fmt.Fprintln(w, "  --spec                 Deploy only: emit .spec.template.spec (text or YAML)")
+	}
+	if showAZ(seen) {
+		fmt.Fprint(w, `  --az                   Availability-zone placement (pod, deploy, ds, sts).
+                         Composes with --yaml; mutually exclusive with
+                         --resources / --spec / --yml-path (each selects a view).
+`)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Examples:")
+	for _, ex := range inspectExamples(seen) {
+		fmt.Fprintln(w, ex)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, `Use "kdiag inspect <subcommand> -h" for details.`)
+}
+
+// Composition rules for view selectors:
+//   none seen   → show everything
+//   yml-path    → show only -n, -l, --yml-path
+//   resources   → show --resources, --yaml, --az; hide --yml-path, --spec
+//   spec        → show --spec, --yaml; hide --yml-path, --resources, --az
+//   az          → show --az, --yaml; hide --yml-path, --resources, --spec
+func showYMLPath(seen string) bool   { return seen == "" || seen == "yml-path" }
+func showYAML(seen string) bool      { return seen != "yml-path" }
+func showResources(seen string) bool { return seen == "" || seen == "resources" }
+func showSpec(seen string) bool      { return seen == "" || seen == "spec" }
+func showAZ(seen string) bool        { return seen == "" || seen == "az" || seen == "resources" }
+
+func inspectExamples(seen string) []string {
+	switch seen {
+	case "yml-path":
+		return []string{
+			"  kdiag inspect pod my-pod --yml-path qosClass",
+			"  kdiag inspect deploy my-deploy --yml-path '*image*'",
+			"  kdiag inspect deploy -l app=my-app --yml-path memory",
+		}
+	case "resources":
+		return []string{
+			"  kdiag inspect pod my-pod --resources",
+			"  kdiag inspect pod my-pod --resources --yaml",
+			"  kdiag inspect deploy my-deploy --resources",
+		}
+	case "spec":
+		return []string{
+			"  kdiag inspect deploy my-deploy --spec",
+			"  kdiag inspect deploy my-deploy --spec --yaml",
+		}
+	case "az":
+		return []string{
+			"  kdiag inspect pod --az -n my-ns -l app=my-app",
+			"  kdiag inspect deploy my-deploy --az --yaml",
+		}
+	default:
+		return []string{
+			"  kdiag inspect pod my-pod",
+			"  kdiag inspect pod my-pod --yaml | yq '.containers[].name'",
+			"  kdiag inspect deploy my-deploy",
+			"  kdiag inspect deploy my-deploy --resources --yaml",
+			"  kdiag inspect deploy my-deploy --spec",
+			"  kdiag inspect deploy my-deploy --yml-path memory",
+		}
+	}
 }
 
 // PrintDiffUsage prints the full generic help for `kdiag diff` (with no kind specified).
@@ -225,4 +283,25 @@ Examples:
 
 Use "kdiag events -h" for flags.
 `)
+}
+
+// ViewFlagSeen scans args for the first view-selector flag and returns its
+// short name ("yml-path", "resources", "spec", "az") or "" if none is
+// present. Accepts both the space-separated form (--yml-path x) and the
+// inline form (--yml-path=x). Used by help printers and the completion
+// scripts (transitively) to filter what gets suggested once a view is set.
+func ViewFlagSeen(args []string) string {
+	for _, a := range args {
+		switch {
+		case a == "--yml-path" || strings.HasPrefix(a, "--yml-path="):
+			return "yml-path"
+		case a == "--resources":
+			return "resources"
+		case a == "--spec":
+			return "spec"
+		case a == "--az":
+			return "az"
+		}
+	}
+	return ""
 }
