@@ -5,9 +5,9 @@ FIXTURES        = test/fixtures/kdiag-test.yaml
 BIN        = kdiag
 CMD_PKG    = .
 VERSION    = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_DATE = $(shell date -u +%d-%m-%y_%H:%M)
+BUILDTIME  = $(shell date -u +%d-%m-%y_%H:%M)
 COMMIT     = $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
-LDFLAGS    = -X main.Version=$(VERSION) -X main.BuildDate=$(BUILD_DATE) -X main.Commit=$(COMMIT)
+LDFLAGS    = -X main.version=$(VERSION) -X main.buildTime=$(BUILDTIME) -X main.commit=$(COMMIT)
 GOFLAGS    ?=
 
 .PHONY: cluster-up cluster-down test unit-tests integration-tests build install autocompletion help

@@ -23,9 +23,10 @@ func WantsHelp(args []string) bool {
 // rather than a two-step tree. Kinds for `inspect` are summarized in the
 // description; full list is one level down via `kdiag inspect -h`.
 //
-// When full is false, auxiliary commands (completion, version) are hidden to
-// keep the no-arg landing screen focused on the diagnostic verbs. They remain
-// listed under `kdiag --help`.
+// When full is false, the auxiliary `completion` command is hidden to keep
+// the no-arg landing screen focused on the diagnostic verbs. It remains
+// listed under `kdiag --help`. `--version` is a flag, not a subcommand, so
+// it does not appear in either mode.
 func PrintRootUsage(w io.Writer, full bool) {
 	fmt.Fprint(w, `kdiag — Kubernetes diagnostic CLI
 
@@ -37,7 +38,6 @@ Available Commands:
 `)
 	if full {
 		fmt.Fprint(w, `  completion   Generate shell completion (bash|zsh)
-  version      Print version, build date, and commit
 `)
 	}
 	fmt.Fprint(w, `

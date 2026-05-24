@@ -457,24 +457,22 @@ kdiag sort certificates.cert-manager.io -A
 
 ---
 
-### `version`
+### `--version`
 
-Print the binary's version, build date, and short commit. Both forms are
-equivalent.
+Print the binary's version, build time, and short commit.
 
 ```text
-kdiag version
 kdiag --version
 ```
 
 Sample output:
 
 ```text
-kdiag v0.1.0 (built 09-05-26_10:30, commit abc1234)
+v0.1.0 (built 09-05-26_10:30, commit abc1234)
 ```
 
-The values are stamped at build time via `-ldflags` on `Version`,
-`BuildDate`, and `Commit` (see Installation). Unstamped builds report
+The values are stamped at build time via `-ldflags` on `version`,
+`buildTime`, and `commit` (see Installation). Unstamped builds report
 `dev` / `unknown` / `none`.
 
 ---
@@ -509,15 +507,15 @@ make install
 Verify the install:
 
 ```sh
-kdiag version
-# kdiag v0.1.0 (built 09-05-26_10:30, commit abc1234)
+kdiag --version
+# v0.1.0 (built 09-05-26_10:30, commit abc1234)
 ```
 
 `make build` produces `./kdiag` in the working directory with the same
 version stamping — useful for local dev without touching `$GOPATH/bin`.
 
-The binary embeds `Version` (from `git describe --tags --always --dirty`),
-`BuildDate` (UTC ISO-8601), and `Commit` (short SHA) via `-ldflags`.
+The binary embeds `version` (from `git describe --tags --always --dirty`),
+`buildTime` (UTC, `dd-mm-yy_HH:MM`), and `commit` (short SHA) via `-ldflags`.
 
 ---
 

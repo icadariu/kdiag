@@ -29,8 +29,9 @@ func TestWantsHelp(t *testing.T) {
 }
 
 // Root help in full mode must NOT enumerate each kind. That bloat is the
-// regression we're guarding against. It must list every command, including
-// the auxiliary ones (completion).
+// regression we're guarding against. It must list every command — the only
+// auxiliary command left is `completion`. `--version` is a flag, not a
+// subcommand, so it does not appear in either help mode.
 func TestPrintRootUsage_Full(t *testing.T) {
 	var buf bytes.Buffer
 	PrintRootUsage(&buf, true)
@@ -43,6 +44,10 @@ func TestPrintRootUsage_Full(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("PrintRootUsage(full) missing %q\n%s", want, out)
 		}
+	}
+	// `version` is no longer a subcommand — must not appear in help.
+	if strings.Contains(out, "version") {
+		t.Errorf("PrintRootUsage(full) should not contain 'version' (flag, not subcommand)\n%s", out)
 	}
 	// az pods must not appear at root level — functionality is under inspect --az.
 	if strings.Contains(out, "az pods") {
@@ -62,9 +67,9 @@ func TestPrintRootUsage_Full(t *testing.T) {
 	}
 }
 
-// Compact mode (the no-arg landing screen) hides auxiliary commands so the
-// page stays focused on the diagnostic verbs. completion remains
-// reachable via `kdiag --help`.
+// Compact mode (the no-arg landing screen) hides the `completion` aux command
+// so the page stays focused on the diagnostic verbs. `completion` remains
+// reachable via `kdiag --help`. `--version` is a flag and never appears here.
 func TestPrintRootUsage_Compact_HidesAuxCommands(t *testing.T) {
 	var buf bytes.Buffer
 	PrintRootUsage(&buf, false)
