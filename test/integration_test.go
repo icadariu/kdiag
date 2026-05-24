@@ -171,23 +171,6 @@ func TestInspectPod_Resources(t *testing.T) {
 	}
 }
 
-// `inspect pod --container-spec` emits .spec.containers[] as YAML when given
-// a positional pod name.
-func TestInspectPod_ContainerSpec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--container-spec", "-n", "kdiag-test", "kdiag-static")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	if !strings.HasPrefix(strings.TrimLeft(out, "\n"), "- ") {
-		t.Errorf("expected YAML sequence (starts with '- '):\n%s", out)
-	}
-	for _, want := range []string{"name:", "image:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in YAML output:\n%s", want, out)
-		}
-	}
-}
-
 // `inspect pod --resources -l <label>` matching multiple pods emits a YAML map
 // keyed by pod name. The shape is chosen by input (--label vs positional), so
 // the map form is used even for a single match.
@@ -203,17 +186,6 @@ func TestInspectPod_Resources_LabelMap(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in YAML output:\n%s", want, out)
 		}
-	}
-}
-
-// `inspect pod --container-spec` + `--resources` mutually exclusive.
-func TestInspectPod_YAMLFlags_MutuallyExclusive(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "--container-spec", "--resources", "-n", "kdiag-test", "kdiag-static")
-	if code == 0 {
-		t.Error("expected non-zero exit when both YAML flags are combined")
-	}
-	if !strings.Contains(errOut, "mutually exclusive") {
-		t.Errorf("expected 'mutually exclusive' error in stderr:\n%s", errOut)
 	}
 }
 

@@ -19,13 +19,11 @@ func runInspectPod(args []string) {
 	fs := pflag.NewFlagSet("inspect pod", pflag.ExitOnError)
 	k, showResources := commonFlags(fs)
 	var (
-		selector          string
-		showAZ            bool
-		showContainerSpec bool
+		selector string
+		showAZ   bool
 	)
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
 	fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-	fs.BoolVar(&showContainerSpec, "container-spec", false, "print .spec.containers[] as YAML")
 	fs.Usage = func() { printInspectPodHelp(os.Stderr, fs) }
 
 	if cli.WantsHelp(args) {
@@ -46,13 +44,8 @@ func runInspectPod(args []string) {
 		os.Exit(1)
 	}
 
-	yamlFlags := boolsSet(*showResources, showContainerSpec)
-	if yamlFlags > 1 {
-		fmt.Fprintln(os.Stderr, "Error: --resources and --container-spec are mutually exclusive")
-		os.Exit(1)
-	}
-	if yamlFlags == 1 && showAZ {
-		fmt.Fprintln(os.Stderr, "Error: --az cannot be combined with --resources or --container-spec")
+	if *showResources && showAZ {
+		fmt.Fprintln(os.Stderr, "Error: --resources cannot be combined with --az")
 		os.Exit(1)
 	}
 
@@ -80,8 +73,8 @@ func runInspectPod(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: no pod found matching %q\n", partial)
 			os.Exit(1)
 		case 1:
-			if yamlFlags == 1 {
-				emitPodYAMLFlat(matches[0], *showResources, showContainerSpec)
+			if *showResources {
+				emitPodYAMLFlat(matches[0], *showResources)
 			} else if showAZ {
 				printAZTable(env, ctx, matches)
 			} else {
@@ -102,12 +95,12 @@ func runInspectPod(args []string) {
 	if err != nil {
 		cli.Fatal(fmt.Errorf("list pods: %w", err))
 	}
-	if yamlFlags == 1 {
+	if *showResources {
 		if len(pods.Items) == 0 {
 			fmt.Fprintln(os.Stderr, "No pods found.")
 			os.Exit(1)
 		}
-		emitPodYAMLMap(pods.Items, *showResources, showContainerSpec)
+		emitPodYAMLMap(pods.Items, *showResources)
 		return
 	}
 	if len(pods.Items) == 0 {
@@ -125,13 +118,10 @@ func runInspectPod(args []string) {
 	}
 }
 
-// emitPodYAMLFlat prints the single-pod YAML output: containers[] when
-// --container-spec is set, or [{name, resources}, ...] when --resources is set.
-func emitPodYAMLFlat(p corev1.Pod, res, contSpec bool) {
-	switch {
-	case contSpec:
-		emitYAML(p.Spec.Containers)
-	case res:
+// emitPodYAMLFlat prints the single-pod YAML output: [{name, resources}, ...]
+// when --resources is set.
+func emitPodYAMLFlat(p corev1.Pod, res bool) {
+	if res {
 		emitYAML(containerResourceList(p.Spec.Containers))
 	}
 }
@@ -139,13 +129,10 @@ func emitPodYAMLFlat(p corev1.Pod, res, contSpec bool) {
 // emitPodYAMLMap prints a YAML map keyed by pod name. Used when --label
 // matched a set of pods. The shape is chosen by input (--label vs positional)
 // rather than match count, so pipelines stay predictable.
-func emitPodYAMLMap(pods []corev1.Pod, res, contSpec bool) {
+func emitPodYAMLMap(pods []corev1.Pod, res bool) {
 	out := make(map[string]any, len(pods))
 	for _, p := range pods {
-		switch {
-		case contSpec:
-			out[p.Name] = p.Spec.Containers
-		case res:
+		if res {
 			out[p.Name] = containerResourceList(p.Spec.Containers)
 		}
 	}
@@ -155,16 +142,15 @@ func emitPodYAMLMap(pods []corev1.Pod, res, contSpec bool) {
 func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
-	fmt.Fprintln(w, "\nYAML-mode flags (--container-spec, --resources) emit valid YAML on stdout — pipeable to yq.")
+	fmt.Fprintln(w, "\n--resources emits valid YAML on stdout — pipeable to yq.")
 	fmt.Fprintln(w, "With --label, output is a YAML map keyed by pod name; with a positional name, output is flat.")
-	fmt.Fprintln(w, "They are mutually exclusive and incompatible with --az.")
+	fmt.Fprintln(w, "It is incompatible with --az.")
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")
 	fmt.Fprintln(w, "  kdiag inspect pod my-pod")
 	fmt.Fprintln(w, "  kdiag inspect pod -n kube-system -l app=my-app")
 	fmt.Fprintln(w, "  kdiag inspect pod --resources -n my-ns my-pod              # YAML: [{name, resources}, ...]")
-	fmt.Fprintln(w, "  kdiag inspect pod --container-spec my-pod | yq '.[].name'")
 	fmt.Fprintln(w, "  kdiag inspect pod --resources -l app=my-app | yq 'keys'    # pod names")
 	fmt.Fprintln(w, "  kdiag inspect pod --az -n my-ns -l app=my-app")
 }
