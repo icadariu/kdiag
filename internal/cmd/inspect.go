@@ -42,15 +42,22 @@ func RunInspect(args []string) {
 	// handlerArgs = all tokens except the kind itself.
 	handlerArgs := append(args[:kindIdx:kindIdx], args[kindIdx+1:]...)
 
-	// --yaml-field short-circuits the per-kind handlers with a generic
+	// --spec is only valid for the deploy kind. Catch it here so the error
+	// path is uniform regardless of where the flag appears.
+	if hasFlag(handlerArgs, "--spec") && kube.CanonicalKind(kind) != "deployment" {
+		fmt.Fprintln(os.Stderr, "Error: --spec is only valid for `inspect deploy`")
+		os.Exit(1)
+	}
+
+	// --find-path short-circuits the per-kind handlers with a generic
 	// dynamic-client walker. Parsing happens here (rather than in commonFlags)
 	// because the walker is kind-agnostic and we want CRD support.
-	if needle, name, selector, ns, ok := extractYAMLFieldArgs(handlerArgs); ok {
+	if needle, name, selector, ns, ok := extractFindPathArgs(handlerArgs); ok {
 		env, err := kube.NewKubeEnv(kube.KubeFlags{Namespace: ns})
 		if err != nil {
 			cli.Fatal(err)
 		}
-		runInspectYAMLField(env, kind, name, selector, needle)
+		runInspectFindPath(env, kind, name, selector, needle)
 		return
 	}
 
@@ -82,7 +89,7 @@ func kindIndex(args []string) int {
 	valueFlags := map[string]bool{
 		"--namespace":  true, "-n": true,
 		"--label":      true, "-l": true,
-		"--yaml-field": true,
+		"--find-path":  true,
 	}
 	for i := 0; i < len(args); i++ {
 		if valueFlags[args[i]] {
@@ -96,36 +103,36 @@ func kindIndex(args []string) int {
 	return -1
 }
 
-// extractYAMLFieldArgs scans handlerArgs (after the kind has been removed)
-// for `--yaml-field <v>` / `--yaml-field=<v>` together with `-n/--namespace`
+// extractFindPathArgs scans handlerArgs (after the kind has been removed)
+// for `--find-path <v>` / `--find-path=<v>` together with `-n/--namespace`
 // and `-l/--label`. Remaining non-flag tokens become the positional name.
 //
-// Returns ok=false when --yaml-field is absent, so the caller falls through
+// Returns ok=false when --find-path is absent, so the caller falls through
 // to the existing per-kind handlers.
 //
 // Errors (missing/empty value, unknown flag, both name+selector, multiple
-// names) are fatal once --yaml-field has been seen — they would also fail
+// names) are fatal once --find-path has been seen — they would also fail
 // inside the per-kind handler, but here we fail earlier because the kind
 // switch has been bypassed. Whitespace-only needles are rejected too:
 // they would otherwise match any whitespace-containing scalar.
-func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns string, ok bool) {
+func extractFindPathArgs(handlerArgs []string) (needle, name, selector, ns string, ok bool) {
 	var (
 		rest     []string
-		seen     bool   // --yaml-field was present (even with empty value)
-		unknown  string // first unknown -flag seen; only fatal if --yaml-field is set
+		seen     bool   // --find-path was present (even with empty value)
+		unknown  string // first unknown -flag seen; only fatal if --find-path is set
 	)
 	for i := 0; i < len(handlerArgs); i++ {
 		a := handlerArgs[i]
 		switch {
-		case a == "--yaml-field":
+		case a == "--find-path":
 			if i+1 >= len(handlerArgs) {
-				cli.Fatal(fmt.Errorf("--yaml-field requires a value"))
+				cli.Fatal(fmt.Errorf("--find-path requires a value"))
 			}
 			needle = handlerArgs[i+1]
 			seen = true
 			i++
-		case strings.HasPrefix(a, "--yaml-field="):
-			needle = strings.TrimPrefix(a, "--yaml-field=")
+		case strings.HasPrefix(a, "--find-path="):
+			needle = strings.TrimPrefix(a, "--find-path=")
 			seen = true
 		case a == "-n" || a == "--namespace":
 			if i+1 >= len(handlerArgs) {
@@ -145,7 +152,7 @@ func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns stri
 			selector = strings.TrimPrefix(a, "--label=")
 		case strings.HasPrefix(a, "-"):
 			// Stash for later. We only know it's "unknown" relative to the
-			// --yaml-field handler; if --yaml-field is absent we fall through
+			// --find-path handler; if --find-path is absent we fall through
 			// to per-kind handlers, which parse and reject these themselves.
 			if unknown == "" {
 				unknown = a
@@ -158,10 +165,10 @@ func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns stri
 		return "", "", "", "", false
 	}
 	if strings.TrimSpace(needle) == "" {
-		cli.Fatal(fmt.Errorf("--yaml-field requires a non-empty value"))
+		cli.Fatal(fmt.Errorf("--find-path requires a non-empty value"))
 	}
 	if unknown != "" {
-		cli.Fatal(fmt.Errorf("--yaml-field: unknown flag %q (only -n/--namespace and -l/--label are accepted alongside)", unknown))
+		cli.Fatal(fmt.Errorf("--find-path: unknown flag %q (only -n/--namespace and -l/--label are accepted alongside)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
@@ -170,10 +177,10 @@ func extractYAMLFieldArgs(handlerArgs []string) (needle, name, selector, ns stri
 		name = rest[0]
 	}
 	if name != "" && selector != "" {
-		cli.Fatal(fmt.Errorf("--yaml-field: provide either <name> or --label/-l (not both)"))
+		cli.Fatal(fmt.Errorf("--find-path: provide either <name> or --label/-l (not both)"))
 	}
 	if name == "" && selector == "" {
-		cli.Fatal(fmt.Errorf("--yaml-field: provide either <name> or --label/-l"))
+		cli.Fatal(fmt.Errorf("--find-path: provide either <name> or --label/-l"))
 	}
 	return needle, name, selector, ns, true
 }
@@ -198,34 +205,43 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 	fmt.Printf("  QoS:           %s\n", dashIfEmpty(string(podObj.Status.QOSClass)))
 	fmt.Println()
 
-	if len(podObj.Status.ContainerStatuses) == 0 {
-		fmt.Println("No containerStatuses found (pod may be Pending/Initializing)")
+	views := kube.CollectContainerViews(&podObj)
+	if len(views) == 0 {
+		fmt.Println("No containers found.")
 		return
 	}
 
-	for _, cs := range podObj.Status.ContainerStatuses {
-		fmt.Printf("Container:       %s\n", cs.Name)
-		repo, ref, isDigest := kube.ParseImage(cs.Image)
+	for _, v := range views {
+		// Header uses the kind label (Init Container / Sidecar Container / Container).
+		// 19-char width gives every label at least one space before the container name.
+		fmt.Printf("%-19s%s\n", v.Kind.String()+":", v.Spec.Name)
+
+		repo, ref, isDigest := kube.ParseImage(v.Spec.Image)
 		fmt.Printf("  Image:         %s\n", repo)
 		if isDigest {
 			fmt.Printf("  Digest:        %s\n", ref)
 		} else {
 			fmt.Printf("  Tag:           %s\n", ref)
 		}
-		fmt.Printf("  Ports:         %s\n", kube.PortsForContainer(podObj.Spec.Containers, cs.Name))
-		fmt.Printf("  State:         %s\n", kube.ContainerStateKey(cs.State))
-		if r := kube.ContainerStateReason(cs.State); r != "" {
-			fmt.Printf("    Reason:      %s\n", r)
+		fmt.Printf("  Ports:         %s\n", kube.FormatPorts(v.Spec.Ports))
+
+		if v.Status != nil {
+			fmt.Printf("  State:         %s\n", kube.ContainerStateKey(v.Status.State))
+			if r := kube.ContainerStateReason(v.Status.State); r != "" {
+				fmt.Printf("    Reason:      %s\n", r)
+			}
+			fmt.Printf("  Last State:    %s\n", kube.ContainerStateKey(v.Status.LastTerminationState))
+			if r := kube.ContainerStateReason(v.Status.LastTerminationState); r != "" {
+				fmt.Printf("    Reason:      %s\n", r)
+			}
+			fmt.Printf("  Ready:         %t\n", v.Status.Ready)
+			fmt.Printf("  Restart Count: %d\n", v.Status.RestartCount)
+		} else {
+			fmt.Println("  State:         <not started>")
 		}
-		fmt.Printf("  Last State:    %s\n", kube.ContainerStateKey(cs.LastTerminationState))
-		if r := kube.ContainerStateReason(cs.LastTerminationState); r != "" {
-			fmt.Printf("    Reason:      %s\n", r)
-		}
-		fmt.Printf("  Ready:         %t\n", cs.Ready)
-		fmt.Printf("  Restart Count: %d\n", cs.RestartCount)
 
 		if showResources {
-			req, lim := kube.ResourcesForContainer(podObj.Spec.Containers, cs.Name)
+			req, lim := kube.ResourcesFromSpec(v.Spec)
 			fmt.Println("  Resources:")
 			fmt.Println("    Requests:")
 			cli.PrintKVBlock(os.Stdout, "      ", req)
@@ -240,7 +256,6 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 // pods matching its selector, emitting the per-pod container blocks. Used by
 // deploy/ds/sts/rs handlers.
 func inspectWorkloadPods(env *kube.KubeEnv, kindLabel, name string, summary map[string]string, selector *metav1.LabelSelector, showResources bool) {
-	fmt.Printf("Namespace: %s\n", env.Namespace)
 	fmt.Printf("%s: %s\n", kindLabel, name)
 	cli.PrintKVBlock(os.Stdout, "  ", summary)
 	fmt.Println()
@@ -269,8 +284,9 @@ func dashIfEmpty(s string) string {
 	return s
 }
 
-// emitYAML marshals v to YAML on stdout. Used by --spec, --container-spec,
-// --resources to produce stdout that is valid YAML (yq-pipeable, no banners).
+// emitYAML marshals v to YAML on stdout. Used wherever --yaml is set
+// (alone or combined with --resources / --spec / --find-path) to produce
+// stdout that is valid YAML (yq-pipeable, no banners).
 func emitYAML(v any) {
 	y, err := yaml.Marshal(v)
 	if err != nil {
@@ -279,18 +295,14 @@ func emitYAML(v any) {
 	fmt.Print(string(y))
 }
 
-// containerResourceEntry is the per-container shape emitted by --resources:
-// `{name, resources}`, matching `yq '.spec.containers | map({"name": .name,
-// "resources": .resources})'`.
-type containerResourceEntry struct {
-	Name      string                      `json:"name"`
-	Resources corev1.ResourceRequirements `json:"resources"`
-}
-
-func containerResourceList(containers []corev1.Container) []containerResourceEntry {
-	out := make([]containerResourceEntry, 0, len(containers))
-	for _, c := range containers {
-		out = append(out, containerResourceEntry{Name: c.Name, Resources: c.Resources})
+// hasFlag reports whether name appears in args either as a bare token
+// (`--spec`) or with an inline value (`--spec=...`).
+func hasFlag(args []string, name string) bool {
+	prefix := name + "="
+	for _, a := range args {
+		if a == name || strings.HasPrefix(a, prefix) {
+			return true
+		}
 	}
-	return out
+	return false
 }

@@ -130,9 +130,11 @@ _kdiag() {
     inspect_flags=(
         $shared_flags
         '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+        '--yaml[Emit yq-safe YAML instead of text]'
+        '--yml[Alias for --yaml]'
+        '--find-path[Walk YAML and print yq paths matching a key or value]'
         '--az[Show availability-zone placement]'
         '--spec[deploy: print .spec.template.spec as YAML]'
-        '--container-spec[pod/deploy: print containers list as YAML]'
     )
     events_flags=(
         '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
@@ -186,23 +188,30 @@ _kdiag() {
                                 kflags=(
                                     $shared_flags
                                     '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                    '--yaml[Emit yq-safe YAML instead of text]'
+                                    '--yml[Alias for --yaml]'
+                                    '--find-path[Walk YAML and print yq paths matching a key or value]'
                                     '--az[Show availability-zone placement]'
-                                    '--container-spec[pod/deploy: print containers list as YAML]'
                                 )
                                 ;;
                             deployment)
                                 kflags=(
                                     $shared_flags
                                     '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                    '--yaml[Emit yq-safe YAML instead of text]'
+                                    '--yml[Alias for --yaml]'
+                                    '--find-path[Walk YAML and print yq paths matching a key or value]'
                                     '--az[Show availability-zone placement]'
                                     '--spec[deploy: print .spec.template.spec as YAML]'
-                                    '--container-spec[pod/deploy: print containers list as YAML]'
                                 )
                                 ;;
                             daemonset|statefulset|replicaset)
                                 kflags=(
                                     '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                     '--resources[Show resource requests/limits as YAML (pod/deploy)]'
+                                    '--yaml[Emit yq-safe YAML instead of text]'
+                                    '--yml[Alias for --yaml]'
+                                    '--find-path[Walk YAML and print yq paths matching a key or value]'
                                     '--az[Show availability-zone placement]'
                                 )
                                 ;;

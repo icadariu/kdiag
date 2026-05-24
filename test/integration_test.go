@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"sigs.k8s.io/yaml"
 )
 
 var binaryPath string
@@ -84,9 +86,6 @@ func TestInspectPod_AllPods(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	if !strings.Contains(out, "Namespace: kdiag-test") {
-		t.Errorf("expected namespace header in output:\n%s", out)
-	}
 	if !strings.Contains(out, "Container:") {
 		t.Errorf("expected at least one container in output:\n%s", out)
 	}
@@ -148,83 +147,141 @@ func TestInspectPod_ByName_PodNameFirst(t *testing.T) {
 	assertContainerInfo(t, out)
 }
 
-// `inspect pod --resources` emits a YAML list of {name, resources} per
-// container. With a positional pod name, the output is a flat sequence — no
-// banner lines — so it pipes straight into yq.
-func TestInspectPod_Resources(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--resources", "-n", "kdiag-test", "kdiag-static")
+// `inspect pod --resources --yaml` emits a YAML list of {name, resources} per
+// container.
+func TestInspectPod_Resources_YAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "--resources", "--yaml", "-n", "kdiag-test", "kdiag-static")
 	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+		t.Fatalf("exit=%d, out=%s", code, out)
 	}
-	if !strings.HasPrefix(strings.TrimLeft(out, "\n"), "- ") {
-		t.Errorf("expected YAML sequence (starts with '- '):\n%s", out)
+	var entries []map[string]any
+	if err := yaml.Unmarshal([]byte(out), &entries); err != nil {
+		t.Fatalf("output is not a YAML list: %v\noutput:\n%s", err, out)
 	}
-	for _, want := range []string{"name:", "resources:", "requests:", "limits:", "cpu", "memory"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in YAML output:\n%s", want, out)
-		}
+	if len(entries) == 0 {
+		t.Fatalf("want at least one entry, got: %s", out)
 	}
-	for _, banned := range []string{"Pod:", "Container:", "Namespace:"} {
-		if strings.Contains(out, banned) {
-			t.Errorf("YAML mode should not include text header %q:\n%s", banned, out)
-		}
+	if entries[0]["name"] != "nginx" {
+		t.Errorf("want name=nginx, got %v", entries[0]["name"])
 	}
 }
 
-// `inspect pod --container-spec` emits .spec.containers[] as YAML when given
-// a positional pod name.
-func TestInspectPod_ContainerSpec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--container-spec", "-n", "kdiag-test", "kdiag-static")
+// `inspect pod --resources --yaml -l <label>` emits a YAML list of containers
+// from matching pods.
+func TestInspectPod_Resources_LabelList_YAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "--resources", "--yaml", "-n", "kdiag-test", "-l", "app=test-app")
 	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+		t.Fatalf("exit=%d, out=%s", code, out)
 	}
-	if !strings.HasPrefix(strings.TrimLeft(out, "\n"), "- ") {
-		t.Errorf("expected YAML sequence (starts with '- '):\n%s", out)
+	var entries []map[string]any
+	if err := yaml.Unmarshal([]byte(out), &entries); err != nil {
+		t.Fatalf("output is not a YAML list: %v\noutput:\n%s", err, out)
 	}
-	for _, want := range []string{"name:", "image:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in YAML output:\n%s", want, out)
-		}
-	}
-}
-
-// `inspect pod --resources -l <label>` matching multiple pods emits a YAML map
-// keyed by pod name. The shape is chosen by input (--label vs positional), so
-// the map form is used even for a single match.
-func TestInspectPod_Resources_LabelMap(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--resources", "-n", "kdiag-test", "-l", "app=test-app")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	if strings.HasPrefix(strings.TrimLeft(out, "\n"), "- ") {
-		t.Errorf("expected YAML map (not sequence) when --label is used:\n%s", out)
-	}
-	for _, want := range []string{"resources:", "name:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in YAML output:\n%s", want, out)
-		}
-	}
-}
-
-// `inspect pod --container-spec` + `--resources` mutually exclusive.
-func TestInspectPod_YAMLFlags_MutuallyExclusive(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "--container-spec", "--resources", "-n", "kdiag-test", "kdiag-static")
-	if code == 0 {
-		t.Error("expected non-zero exit when both YAML flags are combined")
-	}
-	if !strings.Contains(errOut, "mutually exclusive") {
-		t.Errorf("expected 'mutually exclusive' error in stderr:\n%s", errOut)
+	// 2 replicas * 1 container = 2 entries
+	if len(entries) != 2 {
+		t.Errorf("want 2 entries (2 pods × 1 container), got %d: %s", len(entries), out)
 	}
 }
 
 // YAML flag combined with --az must error on pod too.
-func TestInspectPod_YAMLFlags_NotWithAZ(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "--az", "--resources", "-n", "kdiag-test", "kdiag-static")
+func TestInspectPod_YAML_NotWithAZ(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "--az", "--yaml", "-n", "kdiag-test", "kdiag-static")
 	if code == 0 {
-		t.Error("expected non-zero exit when YAML flag combined with --az")
+		t.Error("expected non-zero exit when --yaml is combined with --az")
 	}
-	if !strings.Contains(errOut, "--az cannot be combined") {
-		t.Errorf("expected '--az cannot be combined' error in stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--yaml cannot be combined with --az") {
+		t.Errorf("expected '--yaml cannot be combined with --az' in stderr:\n%s", errOut)
+	}
+}
+
+func TestInspectPod_MultiContainer_TextLabels(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-multi-container", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("exit=%d, out=%s", code, out)
+	}
+	wants := []string{
+		"Init Container:    init-perms",
+		"Sidecar Container: log-shipper",
+		"Container:         app",
+	}
+	for _, w := range wants {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
+		}
+	}
+	if strings.Contains(out, "Namespace:") {
+		t.Errorf("text output must not include Namespace banner; got:\n%s", out)
+	}
+	// Order check: init before sidecar before regular.
+	iInit := strings.Index(out, "init-perms")
+	iSide := strings.Index(out, "log-shipper")
+	iApp := strings.Index(out, "Container:         app")
+	if iInit < 0 || iSide < 0 || iApp < 0 {
+		t.Fatalf("missing one of the container markers; out:\n%s", out)
+	}
+	if !(iInit < iSide && iSide < iApp) {
+		t.Errorf("expected init → sidecar → regular; got positions init=%d sidecar=%d regular=%d", iInit, iSide, iApp)
+	}
+}
+
+func TestInspectPod_MultiContainer_YAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-multi-container", "--yaml", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("exit=%d, out=%s", code, out)
+	}
+	var pod map[string]any
+	if err := yaml.Unmarshal([]byte(out), &pod); err != nil {
+		t.Fatalf("output is not a YAML map: %v\noutput:\n%s", err, out)
+	}
+	containers, _ := pod["containers"].([]any)
+	if len(containers) != 3 {
+		t.Fatalf("want 3 containers, got %d: %s", len(containers), out)
+	}
+	wantNames := []string{"init-perms", "log-shipper", "app"}
+	wantKinds := []string{"Init", "Sidecar", "Regular"}
+	for i, want := range wantNames {
+		c, _ := containers[i].(map[string]any)
+		if c["name"] != want {
+			t.Errorf("containers[%d].name = %v, want %v", i, c["name"], want)
+		}
+		if c["kind"] != wantKinds[i] {
+			t.Errorf("containers[%d].kind = %v, want %v", i, c["kind"], wantKinds[i])
+		}
+	}
+}
+
+func TestInspectPod_LabelMatch_YAML_IsList(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "--yaml", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("exit=%d, out=%s", code, out)
+	}
+	var list []map[string]any
+	if err := yaml.Unmarshal([]byte(out), &list); err != nil {
+		t.Fatalf("output is not a YAML list: %v\noutput:\n%s", err, out)
+	}
+	if len(list) != 2 {
+		t.Errorf("want 2 pods (test-app has 2 replicas), got %d", len(list))
+	}
+}
+
+func TestInspectDeploy_YAML_WorkloadShape(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "test-app", "--yaml", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("exit=%d, out=%s", code, out)
+	}
+	var d map[string]any
+	if err := yaml.Unmarshal([]byte(out), &d); err != nil {
+		t.Fatalf("output is not YAML: %v\noutput:\n%s", err, out)
+	}
+	if d["name"] != "test-app" {
+		t.Errorf("name = %v, want test-app", d["name"])
+	}
+	if d["kind"] != "Deployment" {
+		t.Errorf("kind = %v, want Deployment", d["kind"])
+	}
+	pods, _ := d["pods"].([]any)
+	if len(pods) != 2 {
+		t.Errorf("want 2 pods, got %d", len(pods))
 	}
 }
 
@@ -254,6 +311,9 @@ func TestInspectPod_BySelector(t *testing.T) {
 	}
 	if !strings.Contains(out, "Container:") {
 		t.Errorf("expected container info in output:\n%s", out)
+	}
+	if strings.Contains(out, "Namespace:") {
+		t.Errorf("text output must not include Namespace banner; got:\n%s", out)
 	}
 }
 
@@ -328,12 +388,29 @@ func TestInspect_MissingSubcommand(t *testing.T) {
 	}
 }
 
-// ── inspect --yaml-field ─────────────────────────────────────────────────────
+// --spec is only valid for deploy. Other kinds must error.
+func TestInspect_SpecOnNonDeploy_Errors(t *testing.T) {
+	for _, args := range [][]string{
+		{"inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--spec"},
+		{"inspect", "ds", "kdiag-ds", "-n", "kdiag-test", "--spec"},
+		{"inspect", "sts", "kdiag-sts", "-n", "kdiag-test", "--spec"},
+	} {
+		_, errOut, code := run(args...)
+		if code == 0 {
+			t.Errorf("%v: want non-zero exit, got 0", args)
+		}
+		if !strings.Contains(errOut, "--spec") || !strings.Contains(errOut, "deploy") {
+			t.Errorf("%v: want stderr mentioning --spec/deploy, got: %s", args, errOut)
+		}
+	}
+}
+
+// ── inspect --find-path ─────────────────────────────────────────────────────
 
 // Search for a value (case-sensitive: needle has uppercase).
 // `kdiag-static` runs at QoS class Burstable thanks to its requests+limits.
-func TestInspectYAMLField_PodValue(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "Burstable")
+func TestInspectFindPath_PodValue(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "Burstable")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -347,8 +424,8 @@ func TestInspectYAMLField_PodValue(t *testing.T) {
 // `test-app` fixture has a single container, so the `# name=` annotation
 // is suppressed (nothing to disambiguate). Multi-container annotation is
 // covered by unit tests.
-func TestInspectYAMLField_DeployKey_SmartCase(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--yaml-field", "imagepull")
+func TestInspectFindPath_DeployKey_SmartCase(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--find-path", "imagepull")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -361,8 +438,8 @@ func TestInspectYAMLField_DeployKey_SmartCase(t *testing.T) {
 }
 
 // Label-selector mode prints one block per matched resource, prefixed with the kind/name header.
-func TestInspectYAMLField_LabelSelector(t *testing.T) {
-	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--yaml-field", "qosClass")
+func TestInspectFindPath_LabelSelector(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--find-path", "qosClass")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -375,10 +452,10 @@ func TestInspectYAMLField_LabelSelector(t *testing.T) {
 	}
 }
 
-// Cluster-scoped kind: nodes are namespace-less; --yaml-field must still work.
-func TestInspectYAMLField_ClusterScopedNode(t *testing.T) {
+// Cluster-scoped kind: nodes are namespace-less; --find-path must still work.
+func TestInspectFindPath_ClusterScopedNode(t *testing.T) {
 	// kind clusters set kubernetes.io/hostname on every node; case-sensitive needle.
-	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--yaml-field", "hostname")
+	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--find-path", "hostname")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -390,8 +467,8 @@ func TestInspectYAMLField_ClusterScopedNode(t *testing.T) {
 }
 
 // No matches → exit 0 with empty stdout (grep semantics).
-func TestInspectYAMLField_NoMatchExitsZero(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "ZZZ-no-such-string-ZZZ")
+func TestInspectFindPath_NoMatchExitsZero(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "ZZZ-no-such-string-ZZZ")
 	if code != 0 {
 		t.Fatalf("expected exit 0 with no matches, got %d", code)
 	}
@@ -401,23 +478,23 @@ func TestInspectYAMLField_NoMatchExitsZero(t *testing.T) {
 }
 
 // Providing neither <name> nor -l errors.
-func TestInspectYAMLField_MissingTarget(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--yaml-field", "qos")
+func TestInspectFindPath_MissingTarget(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--find-path", "qos")
 	if code == 0 {
 		t.Error("expected non-zero exit when neither name nor selector is given")
 	}
-	if !strings.Contains(errOut, "--yaml-field") {
-		t.Errorf("expected `--yaml-field` in error stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--find-path") {
+		t.Errorf("expected `--find-path` in error stderr:\n%s", errOut)
 	}
 }
 
-// `--yaml-field=` (empty value) must error explicitly rather than silently
+// `--find-path=` (empty value) must error explicitly rather than silently
 // falling through to the per-kind handler and producing a confusing
 // "unknown flag" message.
-func TestInspectYAMLField_EmptyValueErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field=")
+func TestInspectFindPath_EmptyValueErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path=")
 	if code == 0 {
-		t.Error("expected non-zero exit for empty --yaml-field value")
+		t.Error("expected non-zero exit for empty --find-path value")
 	}
 	if !strings.Contains(errOut, "non-empty") {
 		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
@@ -426,22 +503,22 @@ func TestInspectYAMLField_EmptyValueErrors(t *testing.T) {
 
 // Whitespace-only needle is rejected too — it would otherwise match any
 // scalar containing the same whitespace.
-func TestInspectYAMLField_WhitespaceNeedleErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "   ")
+func TestInspectFindPath_WhitespaceNeedleErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "   ")
 	if code == 0 {
-		t.Error("expected non-zero exit for whitespace-only --yaml-field value")
+		t.Error("expected non-zero exit for whitespace-only --find-path value")
 	}
 	if !strings.Contains(errOut, "non-empty") {
 		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
 	}
 }
 
-// Unknown flags alongside --yaml-field error with a clear message instead
+// Unknown flags alongside --find-path error with a clear message instead
 // of being silently dropped.
-func TestInspectYAMLField_UnknownFlagErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml-field", "qos", "--bogus")
+func TestInspectFindPath_UnknownFlagErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "qos", "--bogus")
 	if code == 0 {
-		t.Error("expected non-zero exit for unknown flag alongside --yaml-field")
+		t.Error("expected non-zero exit for unknown flag alongside --find-path")
 	}
 	if !strings.Contains(errOut, "unknown flag") {
 		t.Errorf("expected `unknown flag` in error stderr:\n%s", errOut)
@@ -450,8 +527,8 @@ func TestInspectYAMLField_UnknownFlagErrors(t *testing.T) {
 
 // Multi-line scalar values must render Go-quoted so the path:value line
 // stays single-line and yq-pipeable.
-func TestInspectYAMLField_MultilineConfigMapValue(t *testing.T) {
-	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--yaml-field", "needle-line-two")
+func TestInspectFindPath_MultilineConfigMapValue(t *testing.T) {
+	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--find-path", "needle-line-two")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -468,8 +545,8 @@ func TestInspectYAMLField_MultilineConfigMapValue(t *testing.T) {
 
 // CRD support — the dynamic client must walk a user-defined kind the same
 // way it walks built-ins. The Widget fixture exercises this.
-func TestInspectYAMLField_CRD(t *testing.T) {
-	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--yaml-field", "renewBefore")
+func TestInspectFindPath_CRD(t *testing.T) {
+	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--find-path", "renewBefore")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -552,15 +629,15 @@ func TestInspectDeploy_LabelMultiMatch_Error(t *testing.T) {
 	}
 }
 
-// `inspect deploy --resources` emits the deployment template's per-container
-// resources as YAML (issue #41). Should NOT iterate pods or show "Pod:" /
+// `inspect deploy --resources --yaml` emits a flat list of {name, kind, resources}
+// across all pods belonging to the deployment. Should NOT iterate pods or show "Pod:" /
 // "Container:" headers from the text mode.
 func TestInspectDeploy_Resources_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--resources", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--resources", "--yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
-	for _, want := range []string{"- name: nginx", "resources:", "requests:", "limits:", "cpu: 50m", "memory: 32Mi"} {
+	for _, want := range []string{"name: nginx", "kind: Regular", "resources:", "requests:", "limits:", "cpu: 50m", "memory: 32Mi"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in YAML output:\n%s", want, out)
 		}
@@ -572,12 +649,12 @@ func TestInspectDeploy_Resources_YAML(t *testing.T) {
 	}
 }
 
-// `inspect deploy --spec` emits .spec.template.spec as YAML. Keys are
+// `inspect deploy --spec --yaml` emits .spec.template.spec as YAML. Keys are
 // alphabetized by sigs.k8s.io/yaml (JSON marshalling), so "image" precedes
 // "name" inside each container entry — assert the keys separately, not as
 // a sequence-marker line.
 func TestInspectDeploy_Spec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--spec", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--spec", "--yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -588,42 +665,14 @@ func TestInspectDeploy_Spec_YAML(t *testing.T) {
 	}
 }
 
-// `inspect deploy --container-spec` emits .spec.template.spec.containers[] as YAML.
-func TestInspectDeploy_ContainerSpec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--container-spec", "-n", "kdiag-test", "test-app")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	// Output must begin with a YAML sequence marker (one entry per container).
-	if !strings.HasPrefix(strings.TrimLeft(out, "\n"), "- ") {
-		t.Errorf("expected YAML sequence (starts with '- '):\n%s", out)
-	}
-	for _, want := range []string{"name: nginx", "image: nginx:alpine", "resources:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in YAML output:\n%s", want, out)
-		}
-	}
-}
-
-// Mutually exclusive YAML flags must error.
-func TestInspectDeploy_YAMLFlags_MutuallyExclusive(t *testing.T) {
-	_, errOut, code := run("inspect", "deploy", "--spec", "--container-spec", "-n", "kdiag-test", "test-app")
-	if code == 0 {
-		t.Error("expected non-zero exit when two YAML flags are combined")
-	}
-	if !strings.Contains(errOut, "mutually exclusive") {
-		t.Errorf("expected 'mutually exclusive' error in stderr:\n%s", errOut)
-	}
-}
-
 // YAML flag combined with --az must error.
-func TestInspectDeploy_YAMLFlags_NotWithAZ(t *testing.T) {
-	_, errOut, code := run("inspect", "deploy", "--az", "--spec", "-n", "kdiag-test", "test-app")
+func TestInspectDeploy_YAML_NotWithAZ(t *testing.T) {
+	_, errOut, code := run("inspect", "deploy", "--az", "--yaml", "-n", "kdiag-test", "test-app")
 	if code == 0 {
-		t.Error("expected non-zero exit when YAML flag is combined with --az")
+		t.Error("expected non-zero exit when --yaml is combined with --az")
 	}
-	if !strings.Contains(errOut, "--az cannot be combined") {
-		t.Errorf("expected '--az cannot be combined' error in stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--yaml cannot be combined with --az") {
+		t.Errorf("expected '--yaml cannot be combined with --az' in stderr:\n%s", errOut)
 	}
 }
 
@@ -856,7 +905,7 @@ func TestInspectPodAZ_AllPods(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	for _, want := range []string{"Namespace: kdiag-test", "POD", "NODE", "ZONE", "Summary"} {
+	for _, want := range []string{"POD", "NODE", "ZONE", "Summary"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output:\n%s", want, out)
 		}
@@ -885,7 +934,7 @@ func TestInspectDeployAZ(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
-	for _, want := range []string{"Namespace: kdiag-test", "Deployment: test-app", "POD", "NODE", "ZONE", "Summary"} {
+	for _, want := range []string{"Deployment: test-app", "POD", "NODE", "ZONE", "Summary"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output:\n%s", want, out)
 		}
@@ -1123,7 +1172,6 @@ func TestDiffPod_TwoPods(t *testing.T) {
 	// compared; the spec-level differences (image, label) are the actual
 	// content an investigator wants.
 	for _, want := range []string{
-		"Namespace: kdiag-test",
 		"Diff: pod/kdiag-static vs pod/kdiag-crasher",
 		"image: nginx:alpine",
 		"image: busybox:latest",
@@ -1319,9 +1367,6 @@ func TestEvents_Default(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
-	if !strings.Contains(out, "Namespace: kdiag-test") {
-		t.Errorf("expected namespace header in output:\n%s", out)
-	}
 	if !strings.Contains(out, "Warning") {
 		t.Errorf("expected Warning events in output:\n%s", out)
 	}
@@ -1466,14 +1511,14 @@ func TestEvents_Help(t *testing.T) {
 
 // ── sort ─────────────────────────────────────────────────────────────────────
 
-// Pod listing: header is present, namespace banner echoes -n, the static pod
-// fixture appears. Smoke test that the command runs and yields a table.
+// Pod listing: header is present, the static pod fixture appears. Smoke test
+// that the command runs and yields a table.
 func TestSort_Pods(t *testing.T) {
 	out, _, code := run("sort", "pod", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
-	for _, want := range []string{"Namespace: kdiag-test", "Kind: pod", "AGE", "CREATED", "NAME", "kdiag-static"} {
+	for _, want := range []string{"Kind: pod", "AGE", "CREATED", "NAME", "kdiag-static"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in sort pod output:\n%s", want, out)
 		}
@@ -1724,14 +1769,14 @@ func TestNestedHelp(t *testing.T) {
 			name:     "inspect pod --help",
 			args:     []string{"inspect", "pod", "--help"},
 			wantCode: 0,
-			contains: []string{"--label", "--namespace", "--resources", "--container-spec", "Examples:"},
+			contains: []string{"--label", "--namespace", "--resources", "--yaml", "Examples:"},
 		},
 		{
 			name:     "inspect deploy -h",
 			args:     []string{"inspect", "deploy", "-h"},
 			wantCode: 0,
 			// YAML-mode flags must be advertised in deploy help.
-			contains: []string{"--namespace", "--resources", "--spec", "--container-spec", "Examples:"},
+			contains: []string{"--namespace", "--resources", "--spec", "--yaml", "Examples:"},
 		},
 		{
 			name:     "inspect node -h",

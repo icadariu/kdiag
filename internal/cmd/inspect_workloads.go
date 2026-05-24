@@ -29,8 +29,18 @@ func runInspectReplicaSet(args []string)  { runWorkload("rs", "ReplicaSet", args
 func runWorkload(short, label string, args []string) {
 	fs := pflag.NewFlagSet("inspect "+short, pflag.ExitOnError)
 	k, showResources := commonFlags(fs)
-	var showAZ bool
+	var (
+		showAZ   bool
+		showYAML bool
+	)
 	fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
+	fs.BoolVar(&showYAML, "yaml", false, "emit yq-safe YAML instead of text")
+	fs.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
+		if name == "yml" {
+			return "yaml"
+		}
+		return pflag.NormalizedName(name)
+	})
 	fs.Usage = func() { printWorkloadHelp(os.Stderr, fs, short, label) }
 
 	if cli.WantsHelp(args) {
@@ -57,13 +67,50 @@ func runWorkload(short, label string, args []string) {
 		cli.Fatal(err)
 	}
 
+	if showYAML && showAZ {
+		fmt.Fprintln(os.Stderr, "Error: --yaml cannot be combined with --az")
+		os.Exit(1)
+	}
+	if showYAML {
+		labelSel := metav1.FormatLabelSelector(selector)
+		pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(labelSel))
+		if err != nil {
+			cli.Fatal(fmt.Errorf("list pods: %w", err))
+		}
+		out := workloadInfo{
+			Name:      name,
+			Kind:      label,
+			Namespace: env.Namespace,
+			Replicas:  summary["Replicas"],
+			Selector:  summary["Selector"],
+			Pods:      make([]podInfo, 0, len(pods.Items)),
+		}
+		if s, ok := summary["Strategy"]; ok {
+			out.Strategy = s
+		} else if s, ok := summary["Update Strategy"]; ok {
+			out.Strategy = s
+		}
+		if *showResources {
+			all := make([]containerResourceSlice, 0)
+			for _, p := range pods.Items {
+				all = append(all, resourceSliceFor(p)...)
+			}
+			emitYAML(all)
+			return
+		}
+		for _, p := range pods.Items {
+			out.Pods = append(out.Pods, podInfoFrom(p))
+		}
+		emitYAML(out)
+		return
+	}
+
 	if showAZ {
 		labelSel := metav1.FormatLabelSelector(selector)
 		pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(labelSel))
 		if err != nil {
 			cli.Fatal(fmt.Errorf("list pods: %w", err))
 		}
-		fmt.Printf("Namespace: %s\n", env.Namespace)
 		fmt.Printf("%s: %s\n", label, name)
 		if len(pods.Items) == 0 {
 			fmt.Println("No pods found.")
@@ -159,10 +206,12 @@ func replicasetSummary(r *appsv1.ReplicaSet) map[string]string {
 func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string) {
 	fmt.Fprintf(w, "Usage: kdiag inspect %s [flags] <name>\n", short)
 	fmt.Fprintf(w, "\nShow summary and container state for all pods belonging to a %s.\n", label)
+	fmt.Fprintln(w, "\nFormat: default is text; --yaml (or --yml) emits a yq-safe YAML document.")
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")
 	fmt.Fprintf(w, "  kdiag inspect %s -n my-ns my-%s\n", short, short)
+	fmt.Fprintf(w, "  kdiag inspect %s my-%s --yaml | yq '.pods | length'\n", short, short)
 	fmt.Fprintf(w, "  kdiag inspect %s --resources -n my-ns my-%s\n", short, short)
 	fmt.Fprintf(w, "  kdiag inspect %s --az -n my-ns my-%s\n", short, short)
 }

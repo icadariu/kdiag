@@ -184,7 +184,7 @@ data:
   color: green
   extra: only-in-b
 ---
-# ConfigMap with a multi-line value — exercises `--yaml-field` rendering
+# ConfigMap with a multi-line value — exercises `--find-path` rendering
 # of strings that contain newlines (must stay on one output line).
 apiVersion: v1
 kind: ConfigMap
@@ -197,7 +197,7 @@ data:
     needle-line-two
     line-three
 ---
-# Minimal CRD for `--yaml-field` against custom resources via the dynamic
+# Minimal CRD for `--find-path` against custom resources via the dynamic
 # client. The Widget CR below exercises the same code path that handles
 # cert-manager / argo / istio CRDs in real clusters.
 apiVersion: apiextensions.k8s.io/v1
@@ -255,3 +255,30 @@ reason: KdiagMultilineTest
 message: "line one\nline two\twith-tab"
 source:
   component: kdiag-fixture
+---
+# Pod with one init, one sidecar (initContainer with restartPolicy: Always,
+# k8s 1.28+), and one regular container — exercises CollectContainerViews
+# and the per-container header labels.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kdiag-multi-container
+  namespace: kdiag-test
+  labels:
+    app: kdiag-multi-container
+spec:
+  initContainers:
+    - name: init-perms
+      image: busybox:latest
+      command: ["sh", "-c", "echo init done"]
+    - name: log-shipper
+      image: busybox:latest
+      restartPolicy: Always
+      command: ["sh", "-c", "while true; do sleep 30; done"]
+  containers:
+    - name: app
+      image: nginx:alpine
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
