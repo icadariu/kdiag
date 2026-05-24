@@ -110,7 +110,6 @@ func runInspectDeploy(args []string) {
 		if err != nil {
 			cli.Fatal(fmt.Errorf("list pods: %w", err))
 		}
-		fmt.Printf("Namespace: %s\n", env.Namespace)
 		fmt.Printf("Deployment: %s\n", name)
 		if len(pods.Items) == 0 {
 			fmt.Println("No pods found.")

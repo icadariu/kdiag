@@ -249,7 +249,6 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 // pods matching its selector, emitting the per-pod container blocks. Used by
 // deploy/ds/sts/rs handlers.
 func inspectWorkloadPods(env *kube.KubeEnv, kindLabel, name string, summary map[string]string, selector *metav1.LabelSelector, showResources bool) {
-	fmt.Printf("Namespace: %s\n", env.Namespace)
 	fmt.Printf("%s: %s\n", kindLabel, name)
 	cli.PrintKVBlock(os.Stdout, "  ", summary)
 	fmt.Println()
