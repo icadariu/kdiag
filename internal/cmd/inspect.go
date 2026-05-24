@@ -198,34 +198,43 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 	fmt.Printf("  QoS:           %s\n", dashIfEmpty(string(podObj.Status.QOSClass)))
 	fmt.Println()
 
-	if len(podObj.Status.ContainerStatuses) == 0 {
-		fmt.Println("No containerStatuses found (pod may be Pending/Initializing)")
+	views := kube.CollectContainerViews(&podObj)
+	if len(views) == 0 {
+		fmt.Println("No containers found.")
 		return
 	}
 
-	for _, cs := range podObj.Status.ContainerStatuses {
-		fmt.Printf("Container:       %s\n", cs.Name)
-		repo, ref, isDigest := kube.ParseImage(cs.Image)
+	for _, v := range views {
+		// Header uses the kind label (Init Container / Sidecar Container / Container).
+		// 17-char width keeps the colon aligned with the existing KV blocks below.
+		fmt.Printf("%-17s %s\n", v.Kind.String()+":", v.Spec.Name)
+
+		repo, ref, isDigest := kube.ParseImage(v.Spec.Image)
 		fmt.Printf("  Image:         %s\n", repo)
 		if isDigest {
 			fmt.Printf("  Digest:        %s\n", ref)
 		} else {
 			fmt.Printf("  Tag:           %s\n", ref)
 		}
-		fmt.Printf("  Ports:         %s\n", kube.PortsForContainer(podObj.Spec.Containers, cs.Name))
-		fmt.Printf("  State:         %s\n", kube.ContainerStateKey(cs.State))
-		if r := kube.ContainerStateReason(cs.State); r != "" {
-			fmt.Printf("    Reason:      %s\n", r)
+		fmt.Printf("  Ports:         %s\n", kube.FormatPorts(v.Spec.Ports))
+
+		if v.Status != nil {
+			fmt.Printf("  State:         %s\n", kube.ContainerStateKey(v.Status.State))
+			if r := kube.ContainerStateReason(v.Status.State); r != "" {
+				fmt.Printf("    Reason:      %s\n", r)
+			}
+			fmt.Printf("  Last State:    %s\n", kube.ContainerStateKey(v.Status.LastTerminationState))
+			if r := kube.ContainerStateReason(v.Status.LastTerminationState); r != "" {
+				fmt.Printf("    Reason:      %s\n", r)
+			}
+			fmt.Printf("  Ready:         %t\n", v.Status.Ready)
+			fmt.Printf("  Restart Count: %d\n", v.Status.RestartCount)
+		} else {
+			fmt.Println("  State:         <not started>")
 		}
-		fmt.Printf("  Last State:    %s\n", kube.ContainerStateKey(cs.LastTerminationState))
-		if r := kube.ContainerStateReason(cs.LastTerminationState); r != "" {
-			fmt.Printf("    Reason:      %s\n", r)
-		}
-		fmt.Printf("  Ready:         %t\n", cs.Ready)
-		fmt.Printf("  Restart Count: %d\n", cs.RestartCount)
 
 		if showResources {
-			req, lim := kube.ResourcesForContainer(podObj.Spec.Containers, cs.Name)
+			req, lim := kube.ResourcesFromSpec(v.Spec)
 			fmt.Println("  Resources:")
 			fmt.Println("    Requests:")
 			cli.PrintKVBlock(os.Stdout, "      ", req)

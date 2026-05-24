@@ -206,6 +206,13 @@ func ResourcesForContainer(containers []corev1.Container, name string) (map[stri
 	return map[string]string{}, map[string]string{}
 }
 
+// ResourcesFromSpec returns (requests, limits) as map[string]string for a
+// single container spec. Use when you already have the container value (e.g.
+// from CollectContainerViews); ResourcesForContainer is the by-name variant.
+func ResourcesFromSpec(c corev1.Container) (map[string]string, map[string]string) {
+	return AllocatableMap(c.Resources.Requests), AllocatableMap(c.Resources.Limits)
+}
+
 // ContainerKind identifies whether a containerView came from initContainers
 // (Init), an initContainer with restartPolicy=Always (Sidecar, k8s 1.28+),
 // or .spec.containers (Regular).

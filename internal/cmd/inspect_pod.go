@@ -83,10 +83,8 @@ func runInspectPod(args []string) {
 			if yamlFlags == 1 {
 				emitPodYAMLFlat(matches[0], *showResources, showContainerSpec)
 			} else if showAZ {
-				fmt.Printf("Namespace: %s\n", env.Namespace)
 				printAZTable(env, ctx, matches)
 			} else {
-				fmt.Printf("Namespace: %s\n", env.Namespace)
 				inspectPodObject(matches[0], *showResources)
 			}
 		default:
@@ -112,7 +110,6 @@ func runInspectPod(args []string) {
 		emitPodYAMLMap(pods.Items, *showResources, showContainerSpec)
 		return
 	}
-	fmt.Printf("Namespace: %s\n", env.Namespace)
 	if len(pods.Items) == 0 {
 		fmt.Println("No pods found.")
 		return
