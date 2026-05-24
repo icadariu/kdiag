@@ -2299,6 +2299,106 @@ func TestInspectPod_HelpUnfiltered(t *testing.T) {
 	}
 }
 
+// ── inspect --yml-path ──────────────────────────────────────────────────────
+
+func TestInspect_YMLPath_DeploymentMemory(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--yml-path", "memory")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"api:",
+		"sidecar:",
+		".spec.template.spec.containers[0].resources.limits.memory",
+		".spec.template.spec.containers[0].resources.requests.memory",
+		".spec.template.spec.containers[1].resources.limits.memory",
+		".spec.template.spec.containers[1].resources.requests.memory",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Deployment/kdiag-multicont:") {
+		t.Errorf("name-mode output should not carry the outer Kind/name header:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		// Path lines start with "." (yq path) and must not end with ": <value>".
+		if strings.HasPrefix(trimmed, ".spec.") && strings.Contains(trimmed, ": ") {
+			t.Errorf("path line carries a value suffix: %q", trimmed)
+		}
+	}
+}
+
+func TestInspect_YMLPath_PipeIntoYQ(t *testing.T) {
+	if _, err := exec.LookPath("yq"); err != nil {
+		t.Skip("yq not installed in PATH; skipping pipeline test")
+	}
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubectl not installed in PATH; skipping pipeline test")
+	}
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--yml-path", "memory")
+	if code != 0 {
+		t.Fatalf("kdiag exit %d:\n%s", code, out)
+	}
+	var firstPath string
+	for _, line := range strings.Split(out, "\n") {
+		s := strings.TrimSpace(line)
+		if strings.HasPrefix(s, ".spec.") {
+			firstPath = s
+			break
+		}
+	}
+	if firstPath == "" {
+		t.Fatalf("no path emitted:\n%s", out)
+	}
+	cmd := exec.Command("sh", "-c",
+		fmt.Sprintf(`kubectl get deploy kdiag-multicont -n kdiag-test -o yaml | yq '%s'`, firstPath))
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+os.Getenv("KUBECONFIG"))
+	yqOut, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("yq pipeline failed: %v\n%s", err, yqOut)
+	}
+	trimmed := strings.TrimSpace(string(yqOut))
+	if trimmed == "" || trimmed == "null" {
+		t.Errorf("yq %q returned empty/null:\n%s", firstPath, yqOut)
+	}
+}
+
+func TestInspect_YMLPath_Selector(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "-n", "kdiag-test", "-l", "app=kdiag-multicont", "--yml-path", "memory")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "Deployment/kdiag-multicont:") {
+		t.Errorf("missing outer Kind/name header in selector mode:\n%s", out)
+	}
+	if !strings.Contains(out, "  api:") || !strings.Contains(out, "  sidecar:") {
+		t.Errorf("missing indented per-container headers:\n%s", out)
+	}
+}
+
+func TestInspect_YMLPath_ConflictWithYAML(t *testing.T) {
+	out, errOut, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--yml-path", "memory", "--yaml")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit:\n%s", out)
+	}
+	combined := out + errOut
+	if !strings.Contains(combined, "--yml-path") || !strings.Contains(combined, "--yaml") {
+		t.Errorf("conflict error should name both flags:\n%s", combined)
+	}
+}
+
+func TestInspect_YMLPath_FindPathRemoved(t *testing.T) {
+	_, errOut, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--find-path", "memory")
+	if code == 0 {
+		t.Fatal("--find-path should be rejected as unknown")
+	}
+	if !strings.Contains(errOut, "find-path") && !strings.Contains(errOut, "unknown flag") {
+		t.Errorf("expected unknown-flag error, got: %s", errOut)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func assertContainerInfo(t *testing.T, out string) {
