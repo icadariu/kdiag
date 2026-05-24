@@ -45,11 +45,12 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmp)
 
 	binaryPath = filepath.Join(tmp, "kdiag")
-	// Stamp ldflags so the `version` command reports meaningful values.
-	buildDate := time.Now().UTC().Format("02-01-06_15:04")
+	// Stamp ldflags so --version reports meaningful values. Var names match
+	// the verbatim go_version_template (lowercase, unexported).
+	buildTime := time.Now().UTC().Format("02-01-06_15:04")
 	ldflags := fmt.Sprintf(
-		"-X main.Version=integration -X main.BuildDate=%s -X main.Commit=test",
-		buildDate,
+		"-X main.version=integration -X main.buildTime=%s -X main.commit=test",
+		buildTime,
 	)
 	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", binaryPath, ".")
 	build.Dir = moduleRoot
@@ -1645,7 +1646,8 @@ func TestNestedHelp(t *testing.T) {
 			args:     []string{"--help"},
 			wantCode: 0,
 			contains: []string{"inspect", "diff", "completion", "events", "Usage:"},
-			// Per-kind descriptions belong one level down.
+			// Per-kind descriptions belong one level down. `version` is a flag
+			// (`--version`), not a subcommand, so it must not appear in help.
 			excludes: []string{
 				"Show container state for all pods in a deployment",
 				"Show container state for all pods in a daemonset",
@@ -1653,6 +1655,8 @@ func TestNestedHelp(t *testing.T) {
 				"rs diff",
 				// az pods is now under inspect --az.
 				"az pods",
+				// `version` subcommand has been removed.
+				"version",
 			},
 		},
 		{
@@ -1754,19 +1758,40 @@ func TestNestedHelp(t *testing.T) {
 	}
 }
 
-// `kdiag --version` prints the stamped build metadata.
-// BuildDate must not be the default `unknown` — TestMain stamps it via -ldflags.
+// `kdiag --version` prints the stamped build metadata, in the format
+// `<version> (built <buildTime>, commit <commit>)` per the global Go rule
+// (no app-name prefix). buildTime must not be the default `unknown` —
+// TestMain stamps it via -ldflags. The `version` subcommand was removed;
+// only the flag is supported now.
 func TestVersion(t *testing.T) {
 	out, _, code := run("--version")
 	if code != 0 {
 		t.Fatalf("expected exit 0 for --version, got %d", code)
 	}
-	// Output format: "<version> (built <date>, commit <sha>)" with no app name
+	// Output must not contain the app-name prefix anywhere.
 	if strings.Contains(out, "kdiag") {
 		t.Errorf("version output should not contain 'kdiag' prefix:\n%s", out)
 	}
+	// Stamped version is "integration"; format also requires "(built " and "commit ".
+	for _, want := range []string{"integration", "(built ", "commit "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in --version output:\n%s", want, out)
+		}
+	}
 	if strings.Contains(out, "unknown") {
-		t.Errorf("expected stamped BuildDate (got default 'unknown'):\n%s", out)
+		t.Errorf("expected stamped buildTime (got default 'unknown'):\n%s", out)
+	}
+}
+
+// `kdiag version` (subcommand) is no longer accepted — it must surface as an
+// unknown-command error like any other unrecognised arg.
+func TestVersionSubcommandRemoved(t *testing.T) {
+	out, errOut, code := run("version")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for `version` subcommand, got 0\nstdout:\n%s\nstderr:\n%s", out, errOut)
+	}
+	if !strings.Contains(errOut, "unknown command") {
+		t.Errorf("expected 'unknown command' in stderr:\n%s", errOut)
 	}
 }
 

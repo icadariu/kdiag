@@ -8,29 +8,11 @@ import (
 	"example.com/kdiag/internal/cmd"
 )
 
-// Build-time metadata, overridden via -ldflags '-X main.Version=...' etc.
-var (
-	Version   = "dev"
-	BuildDate = "unknown"
-	Commit    = "none"
-)
-
-// HandleVersionFlag prints the version line and returns true if --version
-// was passed. Call at the top of main().
-func HandleVersionFlag() bool {
-	for _, a := range os.Args[1:] {
-		if a == "--version" || a == "-version" {
-			fmt.Printf("%s (built %s, commit %s)\n", Version, BuildDate, Commit)
-			return true
-		}
-	}
-	return false
-}
-
 func main() {
 	if HandleVersionFlag() {
 		return
 	}
+
 	if len(os.Args) < 2 {
 		cli.PrintRootUsage(os.Stderr, false)
 		os.Exit(1)
