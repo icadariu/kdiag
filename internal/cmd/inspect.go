@@ -21,11 +21,11 @@ func RunInspect(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Error: inspect requires a kind: pod, deploy, ds, sts, rs, node")
 		fmt.Fprintln(os.Stderr)
-		cli.PrintInspectUsage(os.Stderr)
+		cli.PrintInspectUsage(os.Stderr, args)
 		os.Exit(1)
 	}
 	if cli.WantsHelp(args) {
-		cli.PrintInspectUsage(os.Stdout)
+		cli.PrintInspectUsage(os.Stdout, args)
 		return
 	}
 
@@ -35,7 +35,7 @@ func RunInspect(args []string) {
 	if kindIdx < 0 {
 		fmt.Fprintln(os.Stderr, "Error: inspect requires a kind: pod, deploy, ds, sts, rs, node")
 		fmt.Fprintln(os.Stderr)
-		cli.PrintInspectUsage(os.Stderr)
+		cli.PrintInspectUsage(os.Stderr, args)
 		os.Exit(1)
 	}
 	kind := args[kindIdx]
@@ -76,7 +76,7 @@ func RunInspect(args []string) {
 		runInspectNode(handlerArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown inspect kind: %s\n\n", kind)
-		cli.PrintInspectUsage(os.Stderr)
+		cli.PrintInspectUsage(os.Stderr, args)
 		os.Exit(1)
 	}
 }

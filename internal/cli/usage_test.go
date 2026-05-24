@@ -98,7 +98,7 @@ func TestPrintRootUsage_Compact_HidesAuxCommands(t *testing.T) {
 
 func TestPrintInspectUsage(t *testing.T) {
 	var buf bytes.Buffer
-	PrintInspectUsage(&buf)
+	PrintInspectUsage(&buf, nil)
 	out := buf.String()
 
 	for _, want := range []string{
@@ -224,5 +224,48 @@ func TestViewFlagSeen(t *testing.T) {
 				t.Errorf("ViewFlagSeen(%v) = %q, want %q", c.args, got, c.want)
 			}
 		})
+	}
+}
+
+func TestPrintInspectUsage_NoViewShowsAll(t *testing.T) {
+	var b bytes.Buffer
+	PrintInspectUsage(&b, nil)
+	out := b.String()
+	for _, flag := range []string{"--yml-path", "--yaml", "--resources", "--spec", "--az"} {
+		if !strings.Contains(out, "  "+flag) {
+			t.Errorf("output missing flag line for %q:\n%s", flag, out)
+		}
+	}
+}
+
+func TestPrintInspectUsage_FilteredByYMLPath(t *testing.T) {
+	var b bytes.Buffer
+	PrintInspectUsage(&b, []string{"--yml-path", "memory"})
+	out := b.String()
+	if !strings.Contains(out, "  --yml-path") {
+		t.Errorf("output missing flag line for --yml-path:\n%s", out)
+	}
+	for _, flag := range []string{"--yaml", "--resources", "--spec", "--az"} {
+		if strings.Contains(out, "  "+flag) {
+			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
+		}
+	}
+}
+
+func TestPrintInspectUsage_FilteredByResources(t *testing.T) {
+	var b bytes.Buffer
+	PrintInspectUsage(&b, []string{"--resources"})
+	out := b.String()
+	// These flags should have their own option lines
+	for _, flag := range []string{"--resources", "--yaml", "--az"} {
+		if !strings.Contains(out, "  "+flag) {
+			t.Errorf("output missing flag line for %q:\n%s", flag, out)
+		}
+	}
+	// These should NOT have their own option lines (but may appear in descriptions)
+	for _, flag := range []string{"--yml-path", "--spec"} {
+		if strings.Contains(out, "  "+flag) {
+			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
+		}
 	}
 }
