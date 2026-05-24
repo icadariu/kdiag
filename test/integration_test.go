@@ -300,6 +300,23 @@ func TestInspect_MissingSubcommand(t *testing.T) {
 	}
 }
 
+// --spec is only valid for deploy. Other kinds must error.
+func TestInspect_SpecOnNonDeploy_Errors(t *testing.T) {
+	for _, args := range [][]string{
+		{"inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--spec"},
+		{"inspect", "ds", "kdiag-ds", "-n", "kdiag-test", "--spec"},
+		{"inspect", "sts", "kdiag-sts", "-n", "kdiag-test", "--spec"},
+	} {
+		_, errOut, code := run(args...)
+		if code == 0 {
+			t.Errorf("%v: want non-zero exit, got 0", args)
+		}
+		if !strings.Contains(errOut, "--spec") || !strings.Contains(errOut, "deploy") {
+			t.Errorf("%v: want stderr mentioning --spec/deploy, got: %s", args, errOut)
+		}
+	}
+}
+
 // ── inspect --yaml-field ─────────────────────────────────────────────────────
 
 // Search for a value (case-sensitive: needle has uppercase).

@@ -42,6 +42,13 @@ func RunInspect(args []string) {
 	// handlerArgs = all tokens except the kind itself.
 	handlerArgs := append(args[:kindIdx:kindIdx], args[kindIdx+1:]...)
 
+	// --spec is only valid for the deploy kind. Catch it here so the error
+	// path is uniform regardless of where the flag appears.
+	if hasFlag(handlerArgs, "--spec") && kube.CanonicalKind(kind) != "deployment" {
+		fmt.Fprintln(os.Stderr, "Error: --spec is only valid for `inspect deploy`")
+		os.Exit(1)
+	}
+
 	// --yaml-field short-circuits the per-kind handlers with a generic
 	// dynamic-client walker. Parsing happens here (rather than in commonFlags)
 	// because the walker is kind-agnostic and we want CRD support.
@@ -301,4 +308,16 @@ func containerResourceList(containers []corev1.Container) []containerResourceEnt
 		out = append(out, containerResourceEntry{Name: c.Name, Resources: c.Resources})
 	}
 	return out
+}
+
+// hasFlag reports whether name appears in args either as a bare token
+// (`--spec`) or with an inline value (`--spec=...`).
+func hasFlag(args []string, name string) bool {
+	prefix := name + "="
+	for _, a := range args {
+		if a == name || strings.HasPrefix(a, prefix) {
+			return true
+		}
+	}
+	return false
 }
