@@ -284,8 +284,9 @@ func dashIfEmpty(s string) string {
 	return s
 }
 
-// emitYAML marshals v to YAML on stdout. Used by --spec, --container-spec,
-// --resources to produce stdout that is valid YAML (yq-pipeable, no banners).
+// emitYAML marshals v to YAML on stdout. Used wherever --yaml is set
+// (alone or combined with --resources / --spec / --find-path) to produce
+// stdout that is valid YAML (yq-pipeable, no banners).
 func emitYAML(v any) {
 	y, err := yaml.Marshal(v)
 	if err != nil {

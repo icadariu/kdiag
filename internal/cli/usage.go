@@ -63,34 +63,29 @@ Usage:
   kdiag inspect <subcommand> [flags] [args]
 
 Options:
-  -n, --namespace     Namespace (defaults to current context)
-  -l, --label         Label selector (pod, deploy, node)
-  <partial-name>      Partial pod name match (pod only)
-  --az                Show availability-zone placement (pod, deploy, ds, sts)
-  --spec              YAML: deployment .spec.template.spec (deploy only)
-  --container-spec    YAML: containers[] of the pod (pod) or pod template (deploy)
-  --resources         pod/deploy: YAML list of [{name, resources}, ...];
-                      ds/sts/rs: per-pod requests/limits text block
-  --yaml-field <s>    Search the resource's YAML (keys and values) for <s> and
-                      print the yq path to each hit. Works for any kind. Smart-case:
-                      lowercase needle is case-insensitive; uppercase makes it
-                      case-sensitive. Compatible with --label / -l.
-
-YAML-mode flags (--spec, --container-spec, --resources for pod/deploy) emit pure
-YAML on stdout (no banners) — pipeable to yq. They are mutually exclusive and
-incompatible with --az. With pod + --label matching multiple pods, output is
-a YAML map keyed by pod name.
+  -n, --namespace        Namespace (defaults to current context)
+  -l, --label            Label selector (pod, deploy, node)
+  <partial-name>         Partial pod name match (pod only)
+  --yaml, --yml          Emit a single yq-safe YAML document instead of text
+  --find-path <name>     Walk the resource YAML and print every yq path whose
+                         key or value matches <name>. Works for any kind including CRDs.
+                         Smart-case: lowercase needle is case-insensitive; uppercase
+                         makes it case-sensitive. Compatible with --label.
+  --resources            Narrow output to container resources (text or YAML)
+  --spec                 Deploy only: emit .spec.template.spec (text or YAML)
+  --az                   Availability-zone placement table (pod, deploy, ds, sts);
+                         incompatible with --yaml / --find-path
 
 Examples:
-  kdiag inspect pod -l app=my-app
-  kdiag inspect pod --az -n my-ns
-  kdiag inspect pod --resources -n my-ns my-pod
-  kdiag inspect pod --container-spec my-pod | yq '.[].name'
-  kdiag inspect deploy -n my-ns my-deployment
-  kdiag inspect deploy --az -n my-ns my-deployment
-  kdiag inspect deploy --container-spec -n my-ns my-deployment | yq '.[].name'
-  kdiag inspect pod my-pod --yaml-field Burstable           # find yq path of a value
-  kdiag inspect deploy my-deploy --yaml-field imagePull     # find yq path of a key
+  kdiag inspect pod my-pod
+  kdiag inspect pod my-pod --yaml | yq '.containers[].name'
+  kdiag inspect pod -l app=my-app --yaml | yq '.[0].name'
+  kdiag inspect pod my-pod --resources --yaml
+  kdiag inspect deploy my-deploy
+  kdiag inspect deploy my-deploy --yaml | yq '.pods | length'
+  kdiag inspect deploy my-deploy --spec
+  kdiag inspect pod my-pod --find-path Burstable        # find yq path of a value
+  kdiag inspect deploy my-deploy --find-path imagePull  # find yq path of a key
 
 Use "kdiag inspect <subcommand> -h" for details.
 `)
