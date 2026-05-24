@@ -57,7 +57,7 @@ func RunInspect(args []string) {
 		if err != nil {
 			cli.Fatal(err)
 		}
-		runInspectFindPath(env, kind, name, selector, needle)
+		runInspectYMLPath(env, kind, name, selector, needle)
 		return
 	}
 
