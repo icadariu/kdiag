@@ -42,7 +42,7 @@ _kdiag() {
     local diff_kinds="${sort_kinds}"
     local completion_shells="bash zsh"
     local shared_flags="--namespace -n --label -l"
-    local inspect_flags="${shared_flags} --resources --az --spec --container-spec"
+    local inspect_flags="${shared_flags} --resources --az --spec --yaml --yml --find-path"
     local events_flags="--namespace -n --all-namespaces -A --since"
     local sort_flags="--namespace -n --all-namespaces -A"
 
