@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // WantsHelp reports whether the first arg requests help (-h, --help, or "help").
@@ -225,4 +226,25 @@ Examples:
 
 Use "kdiag events -h" for flags.
 `)
+}
+
+// ViewFlagSeen scans args for the first view-selector flag and returns its
+// short name ("yml-path", "resources", "spec", "az") or "" if none is
+// present. Accepts both the space-separated form (--yml-path x) and the
+// inline form (--yml-path=x). Used by help printers and the completion
+// scripts (transitively) to filter what gets suggested once a view is set.
+func ViewFlagSeen(args []string) string {
+	for _, a := range args {
+		switch {
+		case a == "--yml-path" || strings.HasPrefix(a, "--yml-path="):
+			return "yml-path"
+		case a == "--resources":
+			return "resources"
+		case a == "--spec":
+			return "spec"
+		case a == "--az":
+			return "az"
+		}
+	}
+	return ""
 }

@@ -201,3 +201,28 @@ func TestPrintEventsUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestViewFlagSeen(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"empty", nil, ""},
+		{"no view flags", []string{"my-pod", "-n", "ns"}, ""},
+		{"yml-path space form", []string{"--yml-path", "x"}, "yml-path"},
+		{"yml-path equals form", []string{"--yml-path=x"}, "yml-path"},
+		{"resources", []string{"--resources"}, "resources"},
+		{"spec", []string{"--spec"}, "spec"},
+		{"az", []string{"--az"}, "az"},
+		{"first wins when multiple present", []string{"--resources", "--az"}, "resources"},
+		{"yml-path wins when first", []string{"--yml-path", "x", "--resources"}, "yml-path"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := ViewFlagSeen(c.args); got != c.want {
+				t.Errorf("ViewFlagSeen(%v) = %q, want %q", c.args, got, c.want)
+			}
+		})
+	}
+}
