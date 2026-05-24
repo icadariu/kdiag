@@ -405,3 +405,75 @@ func TestEffectiveEventTime(t *testing.T) {
 		})
 	}
 }
+
+func TestCollectContainerViews(t *testing.T) {
+	always := corev1.ContainerRestartPolicyAlways
+	pod := corev1.Pod{
+		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{Name: "init-perms"},
+				{Name: "log-shipper", RestartPolicy: &always},
+			},
+			Containers: []corev1.Container{
+				{Name: "app"},
+				{Name: "no-status-yet"},
+			},
+		},
+		Status: corev1.PodStatus{
+			InitContainerStatuses: []corev1.ContainerStatus{
+				{Name: "init-perms", Ready: false},
+				{Name: "log-shipper", Ready: true},
+			},
+			ContainerStatuses: []corev1.ContainerStatus{
+				{Name: "app", Ready: true},
+			},
+		},
+	}
+
+	views := CollectContainerViews(&pod)
+
+	if len(views) != 4 {
+		t.Fatalf("want 4 views, got %d", len(views))
+	}
+	want := []struct {
+		name      string
+		kind      ContainerKind
+		hasStatus bool
+	}{
+		{"init-perms", ContainerKindInit, true},
+		{"log-shipper", ContainerKindSidecar, true},
+		{"app", ContainerKindRegular, true},
+		{"no-status-yet", ContainerKindRegular, false},
+	}
+	for i, w := range want {
+		if views[i].Spec.Name != w.name {
+			t.Errorf("view[%d].Spec.Name = %q, want %q", i, views[i].Spec.Name, w.name)
+		}
+		if views[i].Kind != w.kind {
+			t.Errorf("view[%d].Kind = %v, want %v", i, views[i].Kind, w.kind)
+		}
+		if (views[i].Status != nil) != w.hasStatus {
+			t.Errorf("view[%d] status presence = %v, want %v", i, views[i].Status != nil, w.hasStatus)
+		}
+	}
+}
+
+func TestCollectContainerViews_EmptyAndNoInit(t *testing.T) {
+	pod := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "only"}},
+		},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{Name: "only", Ready: true}},
+		},
+	}
+	views := CollectContainerViews(&pod)
+	if len(views) != 1 || views[0].Kind != ContainerKindRegular {
+		t.Fatalf("want 1 regular view, got %+v", views)
+	}
+
+	views = CollectContainerViews(&corev1.Pod{})
+	if len(views) != 0 {
+		t.Fatalf("empty pod should yield no views, got %d", len(views))
+	}
+}

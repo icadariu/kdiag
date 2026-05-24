@@ -205,3 +205,83 @@ func ResourcesForContainer(containers []corev1.Container, name string) (map[stri
 	}
 	return map[string]string{}, map[string]string{}
 }
+
+// ContainerKind identifies whether a containerView came from initContainers
+// (Init), an initContainer with restartPolicy=Always (Sidecar, k8s 1.28+),
+// or .spec.containers (Regular).
+type ContainerKind int
+
+const (
+	ContainerKindInit ContainerKind = iota
+	ContainerKindSidecar
+	ContainerKindRegular
+)
+
+func (k ContainerKind) String() string {
+	switch k {
+	case ContainerKindInit:
+		return "Init Container"
+	case ContainerKindSidecar:
+		return "Sidecar Container"
+	default:
+		return "Container"
+	}
+}
+
+// ContainerView pairs a container spec with its runtime status (if any) and
+// tags whether it is an init, sidecar, or regular container.
+// Status is nil when the container has not started yet.
+type ContainerView struct {
+	Kind   ContainerKind
+	Spec   corev1.Container
+	Status *corev1.ContainerStatus
+}
+
+// CollectContainerViews returns one ContainerView per container in the pod,
+// ordered init → sidecar → regular. Init/sidecar specs come from
+// Spec.InitContainers (a sidecar is an initContainer with
+// RestartPolicy=Always, k8s 1.28+). Status is paired by name; a missing
+// status leaves Status nil.
+func CollectContainerViews(pod *corev1.Pod) []ContainerView {
+	if pod == nil {
+		return nil
+	}
+	initStatus := map[string]*corev1.ContainerStatus{}
+	for i := range pod.Status.InitContainerStatuses {
+		s := &pod.Status.InitContainerStatuses[i]
+		initStatus[s.Name] = s
+	}
+	mainStatus := map[string]*corev1.ContainerStatus{}
+	for i := range pod.Status.ContainerStatuses {
+		s := &pod.Status.ContainerStatuses[i]
+		mainStatus[s.Name] = s
+	}
+
+	out := make([]ContainerView, 0, len(pod.Spec.InitContainers)+len(pod.Spec.Containers))
+	// First pass: init (non-sidecar) entries, preserving spec order.
+	for i := range pod.Spec.InitContainers {
+		c := pod.Spec.InitContainers[i]
+		if isSidecar(c) {
+			continue
+		}
+		out = append(out, ContainerView{Kind: ContainerKindInit, Spec: c, Status: initStatus[c.Name]})
+	}
+	// Second pass: sidecars.
+	for i := range pod.Spec.InitContainers {
+		c := pod.Spec.InitContainers[i]
+		if !isSidecar(c) {
+			continue
+		}
+		out = append(out, ContainerView{Kind: ContainerKindSidecar, Spec: c, Status: initStatus[c.Name]})
+	}
+	// Third pass: regular containers.
+	for i := range pod.Spec.Containers {
+		c := pod.Spec.Containers[i]
+		out = append(out, ContainerView{Kind: ContainerKindRegular, Spec: c, Status: mainStatus[c.Name]})
+	}
+	return out
+}
+
+func isSidecar(c corev1.Container) bool {
+	return c.RestartPolicy != nil && *c.RestartPolicy == corev1.ContainerRestartPolicyAlways
+}
