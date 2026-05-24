@@ -255,3 +255,30 @@ reason: KdiagMultilineTest
 message: "line one\nline two\twith-tab"
 source:
   component: kdiag-fixture
+---
+# Pod with one init, one sidecar (initContainer with restartPolicy: Always,
+# k8s 1.28+), and one regular container — exercises CollectContainerViews
+# and the per-container header labels.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kdiag-multi-container
+  namespace: kdiag-test
+  labels:
+    app: kdiag-multi-container
+spec:
+  initContainers:
+    - name: init-perms
+      image: busybox:latest
+      command: ["sh", "-c", "echo init done"]
+    - name: log-shipper
+      image: busybox:latest
+      restartPolicy: Always
+      command: ["sh", "-c", "while true; do sleep 30; done"]
+  containers:
+    - name: app
+      image: nginx:alpine
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
