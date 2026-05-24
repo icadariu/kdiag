@@ -199,11 +199,13 @@ func commonFlags(fs *pflag.FlagSet) (*kube.KubeFlags, *bool) {
 // for a single pod. Header (Pod: <name>, Node, Pod IP, QoS) is always printed —
 // callers should not also print "Pod: <name>".
 func inspectPodObject(podObj corev1.Pod, showResources bool) {
-	fmt.Printf("Pod: %s\n", podObj.Name)
-	fmt.Printf("  Node:          %s\n", dashIfEmpty(podObj.Spec.NodeName))
-	fmt.Printf("  Pod IP:        %s\n", dashIfEmpty(podObj.Status.PodIP))
-	fmt.Printf("  QoS:           %s\n", dashIfEmpty(string(podObj.Status.QOSClass)))
-	fmt.Println()
+	if !showResources {
+		fmt.Printf("Pod: %s\n", podObj.Name)
+		fmt.Printf("  Node:          %s\n", dashIfEmpty(podObj.Spec.NodeName))
+		fmt.Printf("  Pod IP:        %s\n", dashIfEmpty(podObj.Status.PodIP))
+		fmt.Printf("  QoS:           %s\n", dashIfEmpty(string(podObj.Status.QOSClass)))
+		fmt.Println()
+	}
 
 	views := kube.CollectContainerViews(&podObj)
 	if len(views) == 0 {
@@ -212,41 +214,42 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 	}
 
 	for _, v := range views {
-		// Header uses the kind label (Init Container / Sidecar Container / Container).
-		// 19-char width gives every label at least one space before the container name.
-		fmt.Printf("%-19s%s\n", v.Kind.String()+":", v.Spec.Name)
-
-		repo, ref, isDigest := kube.ParseImage(v.Spec.Image)
-		fmt.Printf("  Image:         %s\n", repo)
-		if isDigest {
-			fmt.Printf("  Digest:        %s\n", ref)
-		} else {
-			fmt.Printf("  Tag:           %s\n", ref)
-		}
-		fmt.Printf("  Ports:         %s\n", kube.FormatPorts(v.Spec.Ports))
-
-		if v.Status != nil {
-			fmt.Printf("  State:         %s\n", kube.ContainerStateKey(v.Status.State))
-			if r := kube.ContainerStateReason(v.Status.State); r != "" {
-				fmt.Printf("    Reason:      %s\n", r)
-			}
-			fmt.Printf("  Last State:    %s\n", kube.ContainerStateKey(v.Status.LastTerminationState))
-			if r := kube.ContainerStateReason(v.Status.LastTerminationState); r != "" {
-				fmt.Printf("    Reason:      %s\n", r)
-			}
-			fmt.Printf("  Ready:         %t\n", v.Status.Ready)
-			fmt.Printf("  Restart Count: %d\n", v.Status.RestartCount)
-		} else {
-			fmt.Println("  State:         <not started>")
-		}
-
 		if showResources {
+			fmt.Printf("  %-19s%s\n", v.Kind.String()+":", v.Spec.Name)
 			req, lim := kube.ResourcesFromSpec(v.Spec)
-			fmt.Println("  Resources:")
-			fmt.Println("    Requests:")
-			cli.PrintKVBlock(os.Stdout, "      ", req)
-			fmt.Println("    Limits:")
-			cli.PrintKVBlock(os.Stdout, "      ", lim)
+			fmt.Println("    Resources:")
+			fmt.Println("      Requests:")
+			cli.PrintKVBlock(os.Stdout, "        ", req)
+			fmt.Println("      Limits:")
+			cli.PrintKVBlock(os.Stdout, "        ", lim)
+		} else {
+			// Header uses the kind label (Init Container / Sidecar Container / Container).
+			// 19-char width gives every label at least one space before the container name.
+			fmt.Printf("%-19s%s\n", v.Kind.String()+":", v.Spec.Name)
+
+			repo, ref, isDigest := kube.ParseImage(v.Spec.Image)
+			fmt.Printf("  Image:         %s\n", repo)
+			if isDigest {
+				fmt.Printf("  Digest:        %s\n", ref)
+			} else {
+				fmt.Printf("  Tag:           %s\n", ref)
+			}
+			fmt.Printf("  Ports:         %s\n", kube.FormatPorts(v.Spec.Ports))
+
+			if v.Status != nil {
+				fmt.Printf("  State:         %s\n", kube.ContainerStateKey(v.Status.State))
+				if r := kube.ContainerStateReason(v.Status.State); r != "" {
+					fmt.Printf("    Reason:      %s\n", r)
+				}
+				fmt.Printf("  Last State:    %s\n", kube.ContainerStateKey(v.Status.LastTerminationState))
+				if r := kube.ContainerStateReason(v.Status.LastTerminationState); r != "" {
+					fmt.Printf("    Reason:      %s\n", r)
+				}
+				fmt.Printf("  Ready:         %t\n", v.Status.Ready)
+				fmt.Printf("  Restart Count: %d\n", v.Status.RestartCount)
+			} else {
+				fmt.Println("  State:         <not started>")
+			}
 		}
 		fmt.Println()
 	}

@@ -105,9 +105,14 @@ func runInspectFindPath(env *kube.KubeEnv, kind, name, selector, needle string) 
 // Identical emitted lines are deduplicated (siblings under an unnamed
 // array that produce the same path+value collapse to one). Pass "" at the
 // top level.
+//
+// Match semantics (see makeMatcher): a needle without `*` matches the full
+// key or scalar value exactly (so `name` does not match `namespace`); use
+// `*name*` for substring, `name*` for prefix, etc. Smart-case still applies.
 func walkFindPath(node any, path, arrayCtx, needle string, smart bool) []string {
+	match := makeMatcher(needle, smart)
 	var out []string
-	walkFindPathInto(node, path, arrayCtx, needle, smart, &out)
+	walkFindPathInto(node, path, arrayCtx, match, &out)
 	return dedupStable(out)
 }
 
@@ -129,7 +134,7 @@ func dedupStable(in []string) []string {
 	return out
 }
 
-func walkFindPathInto(node any, path, arrayCtx, needle string, smart bool, out *[]string) {
+func walkFindPathInto(node any, path, arrayCtx string, match func(string) bool, out *[]string) {
 	switch v := node.(type) {
 	case map[string]any:
 		keys := make([]string, 0, len(v))
@@ -139,10 +144,16 @@ func walkFindPathInto(node any, path, arrayCtx, needle string, smart bool, out *
 		sort.Strings(keys)
 		for _, k := range keys {
 			childPath := path + formatKeyPath(k)
-			if substrMatch(k, needle, smart) {
+			// Skip server-side-apply ownership bookkeeping — its synthetic
+			// `f:`/`k:` keys mirror real field names (image, spec, containers)
+			// and would otherwise dominate every --find-path result.
+			if childPath == ".metadata.managedFields" {
+				continue
+			}
+			if match(k) {
 				*out = append(*out, emitLine(childPath, v[k], arrayCtx))
 			}
-			walkFindPathInto(v[k], childPath, arrayCtx, needle, smart, out)
+			walkFindPathInto(v[k], childPath, arrayCtx, match, out)
 		}
 	case []any:
 		childPath := path + "[]"
@@ -159,14 +170,14 @@ func walkFindPathInto(node any, path, arrayCtx, needle string, smart bool, out *
 					}
 				}
 			}
-			walkFindPathInto(elem, childPath, childCtx, needle, smart, out)
+			walkFindPathInto(elem, childPath, childCtx, match, out)
 		}
 	default:
 		if v == nil {
 			return
 		}
 		s := scalarString(v)
-		if substrMatch(s, needle, smart) {
+		if match(s) {
 			*out = append(*out, emitLine(path, v, arrayCtx))
 		}
 	}
@@ -231,17 +242,48 @@ func scalarString(v any) string {
 	}
 }
 
-// substrMatch is the smart-case substring matcher. When smart is true (needle
-// is all-lowercase) both sides are lowercased; otherwise it's a literal
-// substring check.
-func substrMatch(haystack, needle string, smart bool) bool {
+// makeMatcher compiles needle into a predicate against a single string.
+//
+// Rules:
+//   - empty needle → never matches.
+//   - needle contains `*` → glob: `*` expands to `.*`, everything else
+//     is literal, and the whole string must match end-to-end. So `name*`
+//     matches "namespace" but not "podname"; `*name*` matches both.
+//   - no `*` → exact full-string match (no substring). So `name` matches
+//     the key "name" or a value "name", but does NOT match "namespace",
+//     "generateName", or "container-1-tiny".
+//
+// Smart-case still applies on top: an all-lowercase needle matches
+// case-insensitively; any uppercase makes the match case-sensitive.
+func makeMatcher(needle string, smart bool) func(string) bool {
 	if needle == "" {
-		return false
+		return func(string) bool { return false }
+	}
+	if strings.ContainsRune(needle, '*') {
+		var sb strings.Builder
+		sb.WriteString(`^`)
+		for _, r := range needle {
+			if r == '*' {
+				sb.WriteString(`.*`)
+			} else {
+				sb.WriteString(regexp.QuoteMeta(string(r)))
+			}
+		}
+		sb.WriteString(`$`)
+		// `(?s)` lets `.*` cross newlines so `*line2*` matches a multi-line
+		// scalar that contains "line2" on any line.
+		pattern := "(?s)" + sb.String()
+		if smart {
+			pattern = "(?i)" + pattern
+		}
+		re := regexp.MustCompile(pattern)
+		return func(s string) bool { return re.MatchString(s) }
 	}
 	if smart {
-		return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
+		ln := strings.ToLower(needle)
+		return func(s string) bool { return strings.ToLower(s) == ln }
 	}
-	return strings.Contains(haystack, needle)
+	return func(s string) bool { return s == needle }
 }
 
 func isAllLower(s string) bool {

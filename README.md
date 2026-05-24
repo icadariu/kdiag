@@ -43,13 +43,13 @@ instead of container state.
 
 #### Pod output flags
 
-`--yaml` (or `--yml`) emits a single yq-safe YAML document instead of text.
+`--yaml` emits a single yq-safe YAML document instead of text.
 `--resources` narrows the output to per-container resource info (text or YAML).
 `--az` is incompatible with `--yaml`.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--yaml`, `--yml` | Emit a single yq-safe YAML document instead of text |
+| `--yaml` | Emit a single yq-safe YAML document instead of text |
 | `--resources` | Narrow output to per-container resource info (text or YAML) |
 
 Output includes init containers and sidecar containers (initContainer with
@@ -118,7 +118,7 @@ Workload summary fields:
 
 #### Workload output flags
 
-`--yaml` (or `--yml`) emits a kdiag-shaped YAML document:
+`--yaml` emits a kdiag-shaped YAML document:
 `{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
 `--spec` (deploy only) emits the pod template spec (text or YAML).
 `--resources` narrows output to per-container resource info (text or YAML).
@@ -126,7 +126,7 @@ Workload summary fields:
 
 | Flag | Description |
 | ---- | ----------- |
-| `--yaml`, `--yml` | Emit a single yq-safe YAML document (kdiag-shaped) |
+| `--yaml` | Emit a single yq-safe YAML document (kdiag-shaped) |
 | `--spec` | Emit the pod template spec (deploy only; errors on other kinds) |
 | `--resources` | Narrow output to per-container resource info (text or YAML) |
 
@@ -219,13 +219,24 @@ newlines) render Go-quoted (`"line1\nline2"`) so each match stays on one
 physical line — re-run `yq <path>` on the raw resource to read the value
 unescaped.
 
+Match semantics: by default the needle must equal the **full** key or
+**full** scalar value — so `--find-path name` matches the key `name` and
+a value `"name"`, but NOT `namespace`, `generateName`, or
+`container-1-tiny`. Use `*` as a glob for fuzzier matches: `name*` (prefix),
+`*name` (suffix), `*name*` (substring). The whole string still has to match
+end-to-end.
+
 Key-match recursion: when a needle matches a *key* the walker emits the
 match and continues descending into the value, so common needles like
-`name` or `spec` will surface every nested occurrence. This is
+`*name*` or `*spec*` will surface every nested occurrence. This is
 intentional — `--find-path` is grep-like, not deepest-match-only.
 
 Smart-case matching, like ripgrep: an **all-lowercase** needle is
 case-insensitive; any uppercase character makes the match case-sensitive.
+
+`.metadata.managedFields` is skipped — its server-side-apply bookkeeping
+keys (`f:image`, `k:{"name":"..."}`, …) shadow real field names and would
+otherwise dominate every result.
 
 ```text
 kdiag inspect <kind> [<name> | -l <label>] --find-path <keyword>
@@ -236,8 +247,13 @@ kdiag inspect <kind> [<name> | -l <label>] --find-path <keyword>
 kdiag inspect pod my-pod --find-path Burstable
 # .status.qosClass: Burstable
 
-# Find the yq path of a key, case-insensitive (multi-container deployment)
-kdiag inspect deploy my-deploy --find-path imagePull
+# Exact key match (no substring) — `name` does NOT match `namespace`
+kdiag inspect pod my-pod --find-path name
+# .metadata.name: my-pod
+# .spec.containers[].name: app
+
+# Glob match for partial keys (multi-container deployment)
+kdiag inspect deploy my-deploy --find-path '*imagepull*'
 # # name=app
 # .spec.template.spec.containers[].imagePullPolicy: IfNotPresent
 # # name=sidecar

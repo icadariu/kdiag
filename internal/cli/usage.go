@@ -66,9 +66,11 @@ Options:
   -n, --namespace        Namespace (defaults to current context)
   -l, --label            Label selector (pod, deploy, node)
   <partial-name>         Partial pod name match (pod only)
-  --yaml, --yml          Emit a single yq-safe YAML document instead of text
-  --find-path <name>     Walk the resource YAML and print every yq path whose
-                         key or value matches <name>. Works for any kind including CRDs.
+  --yaml                 Emit a single yq-safe YAML document instead of text
+  --find-path <needle>   Walk the resource YAML and print every yq path whose
+                         key or value matches <needle>. Works for any kind including CRDs.
+                         Default match is exact (full key or full value); use '*' as a
+                         glob ('name*', '*name', '*name*') for prefix/suffix/substring.
                          Smart-case: lowercase needle is case-insensitive; uppercase
                          makes it case-sensitive. Compatible with --label.
   --resources            Narrow output to container resources (text or YAML)

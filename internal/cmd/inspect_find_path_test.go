@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestSubstrMatch_SmartCase(t *testing.T) {
+func TestMakeMatcher_Semantics(t *testing.T) {
 	cases := []struct {
 		name     string
 		hay      string
@@ -14,16 +14,25 @@ func TestSubstrMatch_SmartCase(t *testing.T) {
 		smart    bool
 		expected bool
 	}{
-		{"lowercase needle matches uppercase value", "Burstable", "burstable", true, true},
-		{"lowercase needle partial match", "imagePullPolicy", "imagepull", true, true},
-		{"uppercase needle case-sensitive miss", "burstable", "Burstable", false, false},
-		{"uppercase needle case-sensitive hit", "Burstable", "Burstable", false, true},
+		// Exact (no *): full-string match, smart-case.
+		{"exact smart match", "Burstable", "burstable", true, true},
+		{"exact no-substring", "namespace", "name", true, false},
+		{"exact no-camel-substring", "imagePullPolicy", "imagepull", true, false},
+		{"exact uppercase miss", "burstable", "Burstable", false, false},
+		{"exact uppercase hit", "Burstable", "Burstable", false, true},
+		// Glob (*): expands to .*, full-string match.
+		{"glob suffix", "imagePullPolicy", "*imagepull*", true, true},
+		{"glob prefix matches", "namespace", "name*", true, true},
+		{"glob prefix anchored", "podname", "name*", true, false},
+		{"glob substr both sides", "container-1-tiny", "*tiny*", true, true},
+		// Empty needle.
 		{"empty needle never matches", "anything", "", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := substrMatch(tc.hay, tc.needle, tc.smart); got != tc.expected {
-				t.Fatalf("substrMatch(%q, %q, smart=%v) = %v, want %v",
+			match := makeMatcher(tc.needle, tc.smart)
+			if got := match(tc.hay); got != tc.expected {
+				t.Fatalf("matcher(%q) for needle %q smart=%v = %v, want %v",
 					tc.hay, tc.needle, tc.smart, got, tc.expected)
 			}
 		})
@@ -125,7 +134,7 @@ func TestWalkFindPath_ArrayWithNameAnnotation(t *testing.T) {
 			},
 		},
 	}
-	got := walkFindPath(obj, "", "", "imagepull", true)
+	got := walkFindPath(obj, "", "", "*imagepull*", true)
 	want := []string{
 		"# name=app\n.spec.template.spec.containers[].imagePullPolicy: IfNotPresent",
 		"# name=sidecar\n.spec.template.spec.containers[].imagePullPolicy: Always",
@@ -223,7 +232,7 @@ func TestWalkFindPath_SingleNamedElementOmitsAnnotation(t *testing.T) {
 			},
 		},
 	}
-	got := walkFindPath(obj, "", "", "imagepull", true)
+	got := walkFindPath(obj, "", "", "*imagepull*", true)
 	want := []string{".spec.template.spec.containers[].imagePullPolicy: IfNotPresent"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("single named element: got %v, want %v", got, want)
@@ -256,7 +265,7 @@ func TestWalkFindPath_MultilineValueQuoted(t *testing.T) {
 			"config": "line1\nline2\nline3",
 		},
 	}
-	got := walkFindPath(obj, "", "", "line2", false)
+	got := walkFindPath(obj, "", "", "*line2*", false)
 	want := []string{`.data.config: "line1\nline2\nline3"`}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("multiline value: got %v, want %v", got, want)
@@ -276,10 +285,43 @@ func TestWalkFindPath_DuplicateContainerNameDedups(t *testing.T) {
 			},
 		},
 	}
-	got := walkFindPath(obj, "", "", "imagepull", true)
+	got := walkFindPath(obj, "", "", "*imagepull*", true)
 	want := []string{"# name=app\n.spec.containers[].imagePullPolicy: IfNotPresent"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("duplicate container name: got %v, want %v", got, want)
+	}
+}
+
+func TestWalkFindPath_SkipsManagedFields(t *testing.T) {
+	// .metadata.managedFields is SSA bookkeeping. Its synthetic `f:`/`k:`
+	// keys mirror real field names ("image", "spec", "containers", ...) and
+	// would otherwise dominate every --find-path result.
+	obj := map[string]any{
+		"metadata": map[string]any{
+			"managedFields": []any{
+				map[string]any{
+					"fieldsV1": map[string]any{
+						"f:spec": map[string]any{
+							"f:containers": map[string]any{
+								`k:{"name":"c1"}`: map[string]any{
+									"f:image": map[string]any{},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{"name": "c1", "image": "nginx:1.27"},
+			},
+		},
+	}
+	got := walkFindPath(obj, "", "", "image", true)
+	want := []string{".spec.containers[].image: nginx:1.27"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("managedFields not skipped: got %v, want %v", got, want)
 	}
 }
 
@@ -292,7 +334,7 @@ func TestWalkFindPath_BracketKeyForSpecialChars(t *testing.T) {
 			},
 		},
 	}
-	got := walkFindPath(obj, "", "", "revision", false)
+	got := walkFindPath(obj, "", "", "*revision*", false)
 	wantPrefix := `.metadata.annotations["deployment.kubernetes.io/revision"]: 3`
 	if len(got) != 1 || !strings.HasPrefix(got[0], wantPrefix) {
 		t.Fatalf("special-char key: got %v, want prefix %q", got, wantPrefix)
