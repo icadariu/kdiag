@@ -519,6 +519,133 @@ func TestInspectPod_FlagMatrix(t *testing.T) {
 	}
 }
 
+// The pod subcommand's help text is dispatcher-adjacent: --find-path is
+// registered on the parent `inspect` command, so `fs.FlagUsages()` inside
+// `printInspectPodHelp` cannot list it. The prose around the Flags block is
+// the only place users learn that --find-path exists and that --yaml does
+// not compose with it. This test locks that prose down so it cannot drift
+// out of sync with the dispatcher's actual rejection behaviour pinned in
+// TestInspectPod_FlagMatrix above.
+func TestInspectPod_HelpMentionsFindPath(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-h")
+	if code != 0 {
+		t.Fatalf("expected exit 0 for -h, got %d\nstderr: %s", code, out)
+	}
+	if !strings.Contains(out, "--find-path") {
+		t.Errorf("expected `--find-path` to be mentioned in inspect pod help:\n%s", out)
+	}
+	// The old wording promised universal composition with --yaml, but
+	// --find-path rejects --yaml. Either claim must qualify the exception
+	// or be removed; the unqualified sentence is what we forbid.
+	bad := "--yaml is a format flag and composes with any view."
+	if strings.Contains(out, bad) {
+		t.Errorf("help still contains misleading sentence %q — it contradicts the --find-path rejection:\n%s", bad, out)
+	}
+}
+
+// Coverage backfill: the label-selector + format branches in inspect_pod.go
+// (the multi-pod YAML/resources paths) had no integration coverage. These
+// tests lock them in so a future refactor of the dispatch switch cannot
+// silently drop a list-output mode.
+func TestInspectPod_LabelSelectorYAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--yaml")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	// Multi-pod YAML is a flat list of pod-info maps. Keys are sorted
+	// alphabetically by sigs.k8s.io/yaml, so we assert on shape (list
+	// markers + both pod names) rather than a specific first key.
+	if !strings.HasPrefix(out, "- ") {
+		t.Errorf("expected output to start with YAML list marker `- `, got:\n%s", out)
+	}
+	if strings.Count(out, "test-app-") < 2 {
+		t.Errorf("expected both test-app replicas in YAML list, got:\n%s", out)
+	}
+}
+
+func TestInspectPod_LabelSelectorResourcesYAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--resources", "--yaml")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	// Per-container resource slice carries `resources:` and `kind:` fields.
+	if !strings.Contains(out, "resources:") || !strings.Contains(out, "kind:") {
+		t.Errorf("expected per-container resource slice YAML, got:\n%s", out)
+	}
+}
+
+func TestInspectPod_LabelSelectorResourcesText(t *testing.T) {
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--resources")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	// Multi-pod text mode prints a `==========` separator between pods.
+	if !strings.Contains(out, "==========") {
+		t.Errorf("expected `==========` separator between pods, got:\n%s", out)
+	}
+}
+
+// `--yml` is normalised to `--yaml` at the flag-parser level. If the
+// normaliser breaks, the help would still pass but the alias would silently
+// be treated as an unknown long flag.
+func TestInspectPod_YmlAlias(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	// `name: kdiag-static` is the canonical first line of the YAML emission.
+	if !strings.Contains(out, "name: kdiag-static") {
+		t.Errorf("expected YAML emission for --yml alias, got:\n%s", out)
+	}
+}
+
+// Argument-validation gates — these branches in inspect_pod.go had no
+// integration coverage even though their error messages are user-facing.
+func TestInspectPod_NameAndSelectorRejected(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-l", "app=test-app", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit when both pod name and -l are given")
+	}
+	if !strings.Contains(errOut, "provide either") {
+		t.Errorf("expected `provide either` in stderr, got:\n%s", errOut)
+	}
+}
+
+func TestInspectPod_TwoNamesRejected(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "test-app", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit when two positional names are given")
+	}
+	if !strings.Contains(errOut, "only one") {
+		t.Errorf("expected `only one` in stderr, got:\n%s", errOut)
+	}
+}
+
+func TestInspectPod_NoMatch(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "ZZZ-no-such-pod-ZZZ", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit when no pod matches")
+	}
+	if !strings.Contains(errOut, "no pod found") {
+		t.Errorf("expected `no pod found` in stderr, got:\n%s", errOut)
+	}
+}
+
+// Partial `test-app` matches both replicas of the test-app deployment, so
+// the disambiguation branch fires and enumerates the candidate pod names.
+func TestInspectPod_MultiMatchDisambiguates(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "test-app", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit when partial name matches multiple pods")
+	}
+	if !strings.Contains(errOut, "be more specific") {
+		t.Errorf("expected `be more specific` in stderr, got:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "test-app-") {
+		t.Errorf("expected candidate pod names in stderr, got:\n%s", errOut)
+	}
+}
+
 // Same matrix at the workload layer (deploy adds --spec). Locks down the
 // view-vs-format model across the per-kind handlers, which historically had
 // inconsistent rejections.

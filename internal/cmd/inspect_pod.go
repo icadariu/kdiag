@@ -254,7 +254,9 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "  YAML document on stdout, safe to pipe through yq.")
 	fmt.Fprintln(w, "    single pod:    map { name, namespace, containers, ... }")
 	fmt.Fprintln(w, "    multiple pods: flat list of pod-info maps")
-	fmt.Fprintln(w, "\n--resources and --az are view selectors (mutex). --yaml is a format flag and composes with any view.")
+	fmt.Fprintln(w, "\nView selectors (mutually exclusive): --resources, --az, --find-path.")
+	fmt.Fprintln(w, "--yaml is a format flag; it composes with --resources and --az, but not with --find-path.")
+	fmt.Fprintln(w, "--find-path accepts only -n/--namespace and -l/--label alongside it.")
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")
@@ -263,4 +265,6 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "  kdiag inspect pod -l app=my-app --yaml | yq '.[0].name'")
 	fmt.Fprintln(w, "  kdiag inspect pod my-pod --resources --yaml")
 	fmt.Fprintln(w, "  kdiag inspect pod --az -n my-ns -l app=my-app")
+	fmt.Fprintln(w, "  kdiag inspect pod my-pod --find-path qosClass")
+	fmt.Fprintln(w, "  kdiag inspect pod -l app=my-app --find-path '*image*'")
 }
