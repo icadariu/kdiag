@@ -355,12 +355,13 @@ func TestInspectDeploy_YAML_WorkloadShape(t *testing.T) {
 	}
 }
 
-// The removed --kubeconfig / --context flags must be reported unknown.
+// The removed --kubeconfig / --context / --find-path flags must be reported unknown.
 func TestInspect_RemovedFlags_Rejected(t *testing.T) {
 	cases := [][]string{
 		{"inspect", "pod", "--kubeconfig", "/tmp/x", "-n", "kdiag-test"},
 		{"inspect", "pod", "--context", "ignored", "-n", "kdiag-test"},
 		{"inspect", "pod", "--selector", "app=test-app", "-n", "kdiag-test"},
+		{"inspect", "pod", "--find-path", "name", "-n", "kdiag-test"},
 	}
 	for _, args := range cases {
 		_, errOut, code := run(args...)
@@ -478,7 +479,7 @@ func TestInspect_SpecOnNonDeploy_Errors(t *testing.T) {
 // ── inspect flag-combination matrix ─────────────────────────────────────────
 //
 // Sweeps every pair of flags advertised by `kdiag inspect --help`. The model:
-//   - View selectors (mutex): --resources, --spec, --az, --find-path.
+//   - View selectors (mutex): --resources, --spec, --az, --yml-path.
 //     Default (no flag) is its own view.
 //   - Format flag (orthogonal): --yaml.
 //
@@ -499,9 +500,9 @@ func TestInspectPod_FlagMatrix(t *testing.T) {
 		{"resources+yaml composes", append(base, "--resources", "--yaml"), true, ""},
 		{"az+yaml composes", append(base, "--az", "--yaml"), true, ""},
 		{"resources+az is mutex", append(base, "--resources", "--az"), false, "mutually exclusive"},
-		{"find-path rejects --yaml alongside", append(base, "--find-path", "name", "--yaml"), false, "unknown flag"},
-		{"find-path rejects --az alongside", append(base, "--find-path", "name", "--az"), false, "unknown flag"},
-		{"find-path rejects --resources alongside", append(base, "--find-path", "name", "--resources"), false, "unknown flag"},
+		{"yml-path rejects --yaml alongside", append(base, "--yml-path", "name", "--yaml"), false, "mutually exclusive"},
+		{"yml-path rejects --az alongside", append(base, "--yml-path", "name", "--az"), false, "mutually exclusive"},
+		{"yml-path rejects --resources alongside", append(base, "--yml-path", "name", "--resources"), false, "mutually exclusive"},
 	}
 	for _, r := range rows {
 		t.Run(r.name, func(t *testing.T) {
@@ -519,27 +520,27 @@ func TestInspectPod_FlagMatrix(t *testing.T) {
 	}
 }
 
-// The pod subcommand's help text is dispatcher-adjacent: --find-path is
+// The pod subcommand's help text is dispatcher-adjacent: --yml-path is
 // registered on the parent `inspect` command, so `fs.FlagUsages()` inside
 // `printInspectPodHelp` cannot list it. The prose around the Flags block is
-// the only place users learn that --find-path exists and that --yaml does
+// the only place users learn that --yml-path exists and that --yaml does
 // not compose with it. This test locks that prose down so it cannot drift
 // out of sync with the dispatcher's actual rejection behaviour pinned in
 // TestInspectPod_FlagMatrix above.
-func TestInspectPod_HelpMentionsFindPath(t *testing.T) {
+func TestInspectPod_HelpMentionsYMLPath(t *testing.T) {
 	out, _, code := run("inspect", "pod", "-h")
 	if code != 0 {
 		t.Fatalf("expected exit 0 for -h, got %d\nstderr: %s", code, out)
 	}
-	if !strings.Contains(out, "--find-path") {
-		t.Errorf("expected `--find-path` to be mentioned in inspect pod help:\n%s", out)
+	if !strings.Contains(out, "--yml-path") {
+		t.Errorf("expected `--yml-path` to be mentioned in inspect pod help:\n%s", out)
 	}
 	// The old wording promised universal composition with --yaml, but
-	// --find-path rejects --yaml. Either claim must qualify the exception
+	// --yml-path rejects --yaml. Either claim must qualify the exception
 	// or be removed; the unqualified sentence is what we forbid.
 	bad := "--yaml is a format flag and composes with any view."
 	if strings.Contains(out, bad) {
-		t.Errorf("help still contains misleading sentence %q — it contradicts the --find-path rejection:\n%s", bad, out)
+		t.Errorf("help still contains misleading sentence %q — it contradicts the --yml-path rejection:\n%s", bad, out)
 	}
 }
 
@@ -678,156 +679,6 @@ func TestInspectDeploy_FlagMatrix(t *testing.T) {
 				t.Errorf("expected stderr to contain %q, got: %s", r.wantInErr, errOut)
 			}
 		})
-	}
-}
-
-// ── inspect --find-path ─────────────────────────────────────────────────────
-
-// Search for a value (case-sensitive: needle has uppercase).
-// `kdiag-static` runs at QoS class Burstable thanks to its requests+limits.
-func TestInspectFindPath_PodValue(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "Burstable")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	if !strings.Contains(out, ".status.qosClass: Burstable") {
-		t.Errorf("expected `.status.qosClass: Burstable` in output:\n%s", out)
-	}
-}
-
-// Search for a key with smart-case (lowercase needle → case-insensitive).
-// Deployment containers must produce generalized `[]` array paths. The
-// `test-app` fixture has a single container, so the `# name=` annotation
-// is suppressed (nothing to disambiguate). Multi-container annotation is
-// covered by unit tests.
-func TestInspectFindPath_DeployKey_SmartCase(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--find-path", "*imagepull*")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	if !strings.Contains(out, ".spec.template.spec.containers[].imagePullPolicy") {
-		t.Errorf("expected container imagePullPolicy path in output:\n%s", out)
-	}
-	if strings.Contains(out, "# name=") {
-		t.Errorf("did not expect `# name=` annotation for single-container deployment:\n%s", out)
-	}
-}
-
-// Label-selector mode prints one block per matched resource, prefixed with the kind/name header.
-func TestInspectFindPath_LabelSelector(t *testing.T) {
-	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--find-path", "qosClass")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	// At least one pod/<name>: header and the qosClass match line indented.
-	if !strings.Contains(out, "Pod/") {
-		t.Errorf("expected `Pod/<name>:` header in selector-mode output:\n%s", out)
-	}
-	if !strings.Contains(out, ".status.qosClass:") {
-		t.Errorf("expected `.status.qosClass:` line in output:\n%s", out)
-	}
-}
-
-// Cluster-scoped kind: nodes are namespace-less; --find-path must still work.
-func TestInspectFindPath_ClusterScopedNode(t *testing.T) {
-	// kind clusters set kubernetes.io/hostname on every node; case-sensitive needle.
-	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--find-path", "*hostname*")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	// We don't assert the exact label keys (kind versions vary), only that
-	// the command produced *some* match output and a Node/<name>: header.
-	if !strings.Contains(out, "Node/") {
-		t.Errorf("expected `Node/<name>:` header for cluster-scoped node output:\n%s", out)
-	}
-}
-
-// No matches → exit 0 with empty stdout (grep semantics).
-func TestInspectFindPath_NoMatchExitsZero(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "ZZZ-no-such-string-ZZZ")
-	if code != 0 {
-		t.Fatalf("expected exit 0 with no matches, got %d", code)
-	}
-	if strings.TrimSpace(out) != "" {
-		t.Errorf("expected empty stdout, got:\n%s", out)
-	}
-}
-
-// Providing neither <name> nor -l errors.
-func TestInspectFindPath_MissingTarget(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--find-path", "qos")
-	if code == 0 {
-		t.Error("expected non-zero exit when neither name nor selector is given")
-	}
-	if !strings.Contains(errOut, "--find-path") {
-		t.Errorf("expected `--find-path` in error stderr:\n%s", errOut)
-	}
-}
-
-// `--find-path=` (empty value) must error explicitly rather than silently
-// falling through to the per-kind handler and producing a confusing
-// "unknown flag" message.
-func TestInspectFindPath_EmptyValueErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path=")
-	if code == 0 {
-		t.Error("expected non-zero exit for empty --find-path value")
-	}
-	if !strings.Contains(errOut, "non-empty") {
-		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
-	}
-}
-
-// Whitespace-only needle is rejected too — it would otherwise match any
-// scalar containing the same whitespace.
-func TestInspectFindPath_WhitespaceNeedleErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "   ")
-	if code == 0 {
-		t.Error("expected non-zero exit for whitespace-only --find-path value")
-	}
-	if !strings.Contains(errOut, "non-empty") {
-		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
-	}
-}
-
-// Unknown flags alongside --find-path error with a clear message instead
-// of being silently dropped.
-func TestInspectFindPath_UnknownFlagErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--find-path", "qos", "--bogus")
-	if code == 0 {
-		t.Error("expected non-zero exit for unknown flag alongside --find-path")
-	}
-	if !strings.Contains(errOut, "unknown flag") {
-		t.Errorf("expected `unknown flag` in error stderr:\n%s", errOut)
-	}
-}
-
-// Multi-line scalar values must render Go-quoted so the path:value line
-// stays single-line and yq-pipeable.
-func TestInspectFindPath_MultilineConfigMapValue(t *testing.T) {
-	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--find-path", "*needle-line-two*")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	// The `.data.config:` match must render as one Go-quoted line, with
-	// literal `\n` escapes rather than real newlines that would orphan
-	// the trailing content. (`needle-line-two` also appears inside
-	// kubectl's `last-applied-configuration` annotation — both matches
-	// are valid, both must be on single lines.)
-	want := `.data.config: "line-one\nneedle-line-two\nline-three\n"`
-	if !strings.Contains(out, want) {
-		t.Errorf("expected single-line Go-quoted match %q in output:\n%s", want, out)
-	}
-}
-
-// CRD support — the dynamic client must walk a user-defined kind the same
-// way it walks built-ins. The Widget fixture exercises this.
-func TestInspectFindPath_CRD(t *testing.T) {
-	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--find-path", "renewBefore")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	if !strings.Contains(out, ".spec.renewBefore: 24h") {
-		t.Errorf("expected `.spec.renewBefore: 24h` in CRD output:\n%s", out)
 	}
 }
 
