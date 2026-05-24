@@ -1685,7 +1685,7 @@ func TestNestedHelp(t *testing.T) {
 			name:     "inspect pod --help",
 			args:     []string{"inspect", "pod", "--help"},
 			wantCode: 0,
-			contains: []string{"--label", "--namespace", "--resources", "Examples:"},
+			contains: []string{"--label", "--namespace", "--resources", "--yaml", "Examples:"},
 		},
 		{
 			name:     "inspect deploy -h",
