@@ -560,34 +560,6 @@ func TestInspectDeploy_Spec_YAML(t *testing.T) {
 	}
 }
 
-// `inspect deploy --container-spec` emits .spec.template.spec.containers[] as YAML.
-func TestInspectDeploy_ContainerSpec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--container-spec", "-n", "kdiag-test", "test-app")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
-	}
-	// Output must begin with a YAML sequence marker (one entry per container).
-	if !strings.HasPrefix(strings.TrimLeft(out, "\n"), "- ") {
-		t.Errorf("expected YAML sequence (starts with '- '):\n%s", out)
-	}
-	for _, want := range []string{"name: nginx", "image: nginx:alpine", "resources:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in YAML output:\n%s", want, out)
-		}
-	}
-}
-
-// Mutually exclusive YAML flags must error.
-func TestInspectDeploy_YAMLFlags_MutuallyExclusive(t *testing.T) {
-	_, errOut, code := run("inspect", "deploy", "--spec", "--container-spec", "-n", "kdiag-test", "test-app")
-	if code == 0 {
-		t.Error("expected non-zero exit when two YAML flags are combined")
-	}
-	if !strings.Contains(errOut, "mutually exclusive") {
-		t.Errorf("expected 'mutually exclusive' error in stderr:\n%s", errOut)
-	}
-}
-
 // YAML flag combined with --az must error.
 func TestInspectDeploy_YAMLFlags_NotWithAZ(t *testing.T) {
 	_, errOut, code := run("inspect", "deploy", "--az", "--spec", "-n", "kdiag-test", "test-app")
@@ -1703,7 +1675,7 @@ func TestNestedHelp(t *testing.T) {
 			args:     []string{"inspect", "deploy", "-h"},
 			wantCode: 0,
 			// YAML-mode flags must be advertised in deploy help.
-			contains: []string{"--namespace", "--resources", "--spec", "--container-spec", "Examples:"},
+			contains: []string{"--namespace", "--resources", "--spec", "Examples:"},
 		},
 		{
 			name:     "inspect node -h",

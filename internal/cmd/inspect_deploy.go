@@ -22,15 +22,13 @@ func runInspectDeploy(args []string) {
 	fs := pflag.NewFlagSet("inspect deploy", pflag.ExitOnError)
 	k, showResources := commonFlags(fs)
 	var (
-		selector          string
-		showAZ            bool
-		showSpec          bool
-		showContainerSpec bool
+		selector string
+		showAZ   bool
+		showSpec bool
 	)
 	fs.StringVarP(&selector, "label", "l", "", "label selector to identify the deployment")
 	fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
 	fs.BoolVar(&showSpec, "spec", false, "print .spec.template.spec as YAML")
-	fs.BoolVar(&showContainerSpec, "container-spec", false, "print .spec.template.spec.containers[] as YAML")
 	fs.Usage = func() { printInspectDeployHelp(os.Stderr, fs) }
 
 	if cli.WantsHelp(args) {
@@ -55,13 +53,13 @@ func runInspectDeploy(args []string) {
 		os.Exit(1)
 	}
 
-	yamlFlags := boolsSet(*showResources, showSpec, showContainerSpec)
+	yamlFlags := boolsSet(*showResources, showSpec)
 	if yamlFlags > 1 {
-		fmt.Fprintln(os.Stderr, "Error: --resources, --spec, --container-spec are mutually exclusive")
+		fmt.Fprintln(os.Stderr, "Error: --resources and --spec are mutually exclusive")
 		os.Exit(1)
 	}
 	if yamlFlags == 1 && showAZ {
-		fmt.Fprintln(os.Stderr, "Error: --az cannot be combined with --resources, --spec, or --container-spec")
+		fmt.Fprintln(os.Stderr, "Error: --az cannot be combined with --resources or --spec")
 		os.Exit(1)
 	}
 
@@ -101,7 +99,7 @@ func runInspectDeploy(args []string) {
 	}
 
 	if yamlFlags == 1 {
-		emitDeployTemplateYAML(d, *showResources, showSpec, showContainerSpec)
+		emitDeployTemplateYAML(d, *showResources, showSpec)
 		return
 	}
 
@@ -126,14 +124,12 @@ func runInspectDeploy(args []string) {
 }
 
 // emitDeployTemplateYAML marshals the requested subtree of the deployment's
-// pod template to stdout as YAML. Exactly one of the three flags is set when
+// pod template to stdout as YAML. Exactly one of the two flags is set when
 // this is called; the caller enforces the mutual-exclusion invariant.
-func emitDeployTemplateYAML(d *appsv1.Deployment, res, spec, contSpec bool) {
+func emitDeployTemplateYAML(d *appsv1.Deployment, res, spec bool) {
 	switch {
 	case spec:
 		emitYAML(d.Spec.Template.Spec)
-	case contSpec:
-		emitYAML(d.Spec.Template.Spec.Containers)
 	case res:
 		emitYAML(containerResourceList(d.Spec.Template.Spec.Containers))
 	}
@@ -163,6 +159,4 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "  kdiag inspect deploy --az -n my-ns my-deploy")
 	fmt.Fprintln(w, "  kdiag inspect deploy --resources -n my-ns my-deploy        # YAML: [{name, resources}, ...]")
 	fmt.Fprintln(w, "  kdiag inspect deploy --spec -n my-ns my-deploy             # YAML: .spec.template.spec")
-	fmt.Fprintln(w, "  kdiag inspect deploy --container-spec -n my-ns my-deploy   # YAML: containers[]")
-	fmt.Fprintln(w, "  kdiag inspect deploy --container-spec my-deploy | yq '.[].name'")
 }
