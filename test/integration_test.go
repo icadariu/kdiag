@@ -2250,6 +2250,72 @@ func TestInspect_YMLPath_FindPathRemoved(t *testing.T) {
 	}
 }
 
+func TestInspect_YMLPath_ClusterScopedNode(t *testing.T) {
+	// kind clusters set kubernetes.io/hostname on every node; case-sensitive needle.
+	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--yml-path", "*hostname*")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	// We don't assert the exact label keys (kind versions vary), only that
+	// the command produced *some* match output and a Node/<name>: header.
+	if !strings.Contains(out, "Node/") {
+		t.Errorf("expected `Node/<name>:` header for cluster-scoped node output:\n%s", out)
+	}
+}
+
+func TestInspect_YMLPath_NoMatchExitsZero(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml-path", "ZZZ-no-such-string-ZZZ")
+	if code != 0 {
+		t.Fatalf("expected exit 0 with no matches, got %d", code)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("expected empty stdout, got:\n%s", out)
+	}
+}
+
+func TestInspect_YMLPath_MissingTarget(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--yml-path", "qos")
+	if code == 0 {
+		t.Error("expected non-zero exit when neither name nor selector is given")
+	}
+	if !strings.Contains(errOut, "--yml-path") {
+		t.Errorf("expected `--yml-path` in error stderr:\n%s", errOut)
+	}
+}
+
+func TestInspect_YMLPath_EmptyValueErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml-path=")
+	if code == 0 {
+		t.Error("expected non-zero exit for empty --yml-path value")
+	}
+	if !strings.Contains(errOut, "non-empty") {
+		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
+	}
+}
+
+func TestInspect_YMLPath_WhitespaceNeedleErrors(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml-path", "   ")
+	if code == 0 {
+		t.Error("expected non-zero exit for whitespace-only --yml-path value")
+	}
+	if !strings.Contains(errOut, "non-empty") {
+		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
+	}
+}
+
+func TestInspect_YMLPath_CRD(t *testing.T) {
+	// CRD coverage: dynamic client resolves the kind and walks unstructured.
+	// Output dropped the ": <value>" suffix in the redesign, so we only
+	// assert the path is present.
+	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--yml-path", "renewBefore")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	if !strings.Contains(out, ".spec.renewBefore") {
+		t.Errorf("expected `.spec.renewBefore` in CRD output:\n%s", out)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func assertContainerInfo(t *testing.T, out string) {
