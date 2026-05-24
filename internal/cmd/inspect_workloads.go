@@ -206,7 +206,7 @@ func replicasetSummary(r *appsv1.ReplicaSet) map[string]string {
 func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string) {
 	fmt.Fprintf(w, "Usage: kdiag inspect %s [flags] <name>\n", short)
 	fmt.Fprintf(w, "\nShow summary and container state for all pods belonging to a %s.\n", label)
-	fmt.Fprintln(w, "\nFormat: default is text; --yaml (or --yml) emits a yq-safe YAML document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a yq-safe YAML document.")
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")

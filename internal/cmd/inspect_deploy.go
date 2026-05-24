@@ -155,7 +155,7 @@ func runInspectDeploy(args []string) {
 		return
 	}
 
-	inspectWorkloadPods(env, "Deployment", name, summary, d.Spec.Selector, false)
+	inspectWorkloadPods(env, "Deployment", name, summary, d.Spec.Selector, *showResources)
 }
 
 func boolsSet(bs ...bool) int {
@@ -212,7 +212,7 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow summary and container state for all pods belonging to a Deployment.")
 	fmt.Fprintln(w, "\nFormat:")
-	fmt.Fprintln(w, "  Default output is text. With --yaml (or --yml) a single YAML document is emitted")
+	fmt.Fprintln(w, "  Default output is text. With --yaml a single YAML document is emitted")
 	fmt.Fprintln(w, "  on stdout (kdiag-shaped: { name, kind, replicas, selector, pods: [...] }).")
 	fmt.Fprintln(w, "  --resources narrows the content; --spec (deploy only) emits the pod template spec.")
 	fmt.Fprintln(w, "\nFlags:")

@@ -25,6 +25,60 @@ _kdiag_extract_ns() {
     done
 }
 
+# Count positional arguments starting from index $1.
+_kdiag_count_positionals() {
+    local start_idx=$1
+    local count=0
+    local i
+    for ((i=start_idx; i<COMP_CWORD; i++)); do
+        case "${COMP_WORDS[i]}" in
+            -n|--namespace|-l|--label|--find-path|--since)
+                # Skip flag and its value
+                ((i++))
+                ;;
+            -*)
+                # Skip boolean flags
+                ;;
+            *)
+                ((count++))
+                ;;
+        esac
+    done
+    printf '%d' "${count}"
+}
+
+# Returns 0 (true) if the command line contains -l or --label or --label=
+_kdiag_has_label() {
+    local i
+    for ((i=1; i<COMP_CWORD; i++)); do
+        case "${COMP_WORDS[i]}" in
+            -l|--label|--label=*)
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
+# Find the index of the kind positional argument under inspect/diff.
+_kdiag_find_kind_idx() {
+    local i
+    for ((i=2; i<COMP_CWORD; i++)); do
+        case "${COMP_WORDS[i]}" in
+            -n|--namespace|-l|--label|--find-path)
+                ((i++))
+                ;;
+            -*)
+                ;;
+            *)
+                printf '%d' "${i}"
+                return
+                ;;
+        esac
+    done
+    printf '-1'
+}
+
 _kdiag() {
     local cur prev cword
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -42,7 +96,7 @@ _kdiag() {
     local diff_kinds="${sort_kinds}"
     local completion_shells="bash zsh"
     local shared_flags="--namespace -n --label -l"
-    local inspect_flags="${shared_flags} --resources --az --spec --yaml --yml --find-path"
+    local inspect_flags="${shared_flags} --resources --az --spec --yaml --find-path"
     local events_flags="--namespace -n --all-namespaces -A --since"
     local sort_flags="--namespace -n --all-namespaces -A"
 
@@ -67,31 +121,51 @@ _kdiag() {
     local cmd="${COMP_WORDS[1]}"
     case "${cmd}" in
         inspect)
-            if [[ ${cword} -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "${inspect_kinds}" -- "${cur}") )
+            local kind_idx
+            kind_idx="$(_kdiag_find_kind_idx)"
+            if [[ ${kind_idx} -eq -1 ]]; then
+                if [[ "${cur}" == -* ]]; then
+                    COMPREPLY=( $(compgen -W "${inspect_flags}" -- "${cur}") )
+                else
+                    COMPREPLY=( $(compgen -W "${inspect_kinds}" -- "${cur}") )
+                fi
                 return
             fi
-            # cword >= 3: complete flags or a resource name positional.
+            local kind="${COMP_WORDS[kind_idx]}"
             if [[ "${cur}" == -* ]]; then
                 COMPREPLY=( $(compgen -W "${inspect_flags}" -- "${cur}") )
                 return
             fi
-            local kind="${COMP_WORDS[2]}"
-            local ns
-            ns="$(_kdiag_extract_ns)"
-            local names
-            names="$(kdiag __complete resources "${kind}" "${ns}" "${cur}" 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "${names}" -- "${cur}") )
-            ;;
-        diff)
-            if [[ ${cword} -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "${diff_kinds}" -- "${cur}") )
+            if _kdiag_has_label; then
                 return
             fi
-            local diff_kind="${COMP_WORDS[2]}"
+            local pos_count
+            pos_count="$(_kdiag_count_positionals $((kind_idx + 1)))"
+            if [[ ${pos_count} -eq 0 ]]; then
+                local ns
+                ns="$(_kdiag_extract_ns)"
+                local names
+                names="$(kdiag __complete resources "${kind}" "${ns}" "${cur}" 2>/dev/null)"
+                COMPREPLY=( $(compgen -W "${names}" -- "${cur}") )
+            else
+                # Positional cap reached (inspect <kind> accepts one name) —
+                # offer only flags so users don't tack on a second name.
+                COMPREPLY=( $(compgen -W "${inspect_flags}" -- "${cur}") )
+            fi
+            ;;
+        diff)
+            local kind_idx
+            kind_idx="$(_kdiag_find_kind_idx)"
+            if [[ ${kind_idx} -eq -1 ]]; then
+                if [[ "${cur}" == -* ]]; then
+                    COMPREPLY=( $(compgen -W "--namespace -n --full --label -l" -- "${cur}") )
+                else
+                    COMPREPLY=( $(compgen -W "${diff_kinds}" -- "${cur}") )
+                fi
+                return
+            fi
+            local diff_kind="${COMP_WORDS[kind_idx]}"
             if [[ "${cur}" == -* ]]; then
-                # Per-kind flags must match the Go flagset registered in
-                # internal/cmd/diff.go (runDiffGeneric / runDiffReplicaSet).
                 local diff_flags
                 case "${diff_kind}" in
                     rs|replicaset)
@@ -106,16 +180,31 @@ _kdiag() {
             fi
             local ns
             ns="$(_kdiag_extract_ns)"
-            # diff rs revision-diff mode: the positional is the *deployment*
-            # name, not the RS name. Everything else uses the typed kind
-            # directly — the Go side resolves aliases via the discovery doc.
             local target_kind="${diff_kind}"
             case "${diff_kind}" in
-                rs|replicaset) target_kind="deployment" ;;
+                rs|replicaset)
+                    target_kind="deployment"
+                    if _kdiag_has_label; then
+                        return
+                    fi
+                    local pos_count
+                    pos_count="$(_kdiag_count_positionals $((kind_idx + 1)))"
+                    if [[ ${pos_count} -eq 0 ]]; then
+                        local names
+                        names="$(kdiag __complete resources "${target_kind}" "${ns}" "${cur}" 2>/dev/null)"
+                        COMPREPLY=( $(compgen -W "${names}" -- "${cur}") )
+                    fi
+                    ;;
+                *)
+                    local pos_count
+                    pos_count="$(_kdiag_count_positionals $((kind_idx + 1)))"
+                    if [[ ${pos_count} -lt 2 ]]; then
+                        local names
+                        names="$(kdiag __complete resources "${target_kind}" "${ns}" "${cur}" 2>/dev/null)"
+                        COMPREPLY=( $(compgen -W "${names}" -- "${cur}") )
+                    fi
+                    ;;
             esac
-            local names
-            names="$(kdiag __complete resources "${target_kind}" "${ns}" "${cur}" 2>/dev/null)"
-            COMPREPLY=( $(compgen -W "${names}" -- "${cur}") )
             ;;
         events)
             COMPREPLY=( $(compgen -W "${events_flags}" -- "${cur}") )

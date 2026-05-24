@@ -147,6 +147,49 @@ func TestInspectPod_ByName_PodNameFirst(t *testing.T) {
 	assertContainerInfo(t, out)
 }
 
+// `inspect pod --resources` in text mode narrows output to container name and resources only.
+func TestInspectPod_Resources_Text(t *testing.T) {
+	out, errOut, code := run("inspect", "pod", "--resources", "-n", "kdiag-test", "kdiag-static")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s\nstderr: %s", code, out, errOut)
+	}
+
+	// Output should contain the container name and its resources.
+	expected := []string{
+		"  Container:         nginx",
+		"    Resources:",
+		"      Requests:",
+		"        cpu: 10m",
+		"        memory: 16Mi",
+		"      Limits:",
+		"        memory: 32Mi",
+	}
+	for _, want := range expected {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output:\n%s", want, out)
+		}
+	}
+
+	// Output should NOT contain other details.
+	banned := []string{
+		"Pod:",
+		"Node:",
+		"Pod IP:",
+		"QoS:",
+		"Image:",
+		"Tag:",
+		"Ports:",
+		"State:",
+		"Ready:",
+		"Restart Count:",
+	}
+	for _, ban := range banned {
+		if strings.Contains(out, ban) {
+			t.Errorf("did not expect %q in output:\n%s", ban, out)
+		}
+	}
+}
+
 // `inspect pod --resources --yaml` emits a YAML list of {name, resources} per
 // container.
 func TestInspectPod_Resources_YAML(t *testing.T) {
@@ -425,7 +468,7 @@ func TestInspectFindPath_PodValue(t *testing.T) {
 // is suppressed (nothing to disambiguate). Multi-container annotation is
 // covered by unit tests.
 func TestInspectFindPath_DeployKey_SmartCase(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--find-path", "imagepull")
+	out, _, code := run("inspect", "deploy", "test-app", "-n", "kdiag-test", "--find-path", "*imagepull*")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -455,7 +498,7 @@ func TestInspectFindPath_LabelSelector(t *testing.T) {
 // Cluster-scoped kind: nodes are namespace-less; --find-path must still work.
 func TestInspectFindPath_ClusterScopedNode(t *testing.T) {
 	// kind clusters set kubernetes.io/hostname on every node; case-sensitive needle.
-	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--find-path", "hostname")
+	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--find-path", "*hostname*")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -528,7 +571,7 @@ func TestInspectFindPath_UnknownFlagErrors(t *testing.T) {
 // Multi-line scalar values must render Go-quoted so the path:value line
 // stays single-line and yq-pipeable.
 func TestInspectFindPath_MultilineConfigMapValue(t *testing.T) {
-	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--find-path", "needle-line-two")
+	out, _, code := run("inspect", "cm", "kdiag-cm-multiline", "-n", "kdiag-test", "--find-path", "*needle-line-two*")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}

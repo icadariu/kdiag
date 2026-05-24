@@ -160,13 +160,15 @@ assert_offered() {
 
 # Source of truth derived from internal/cmd/inspect_*.go.
 typeset -gA INSPECT_FLAGS
-INSPECT_FLAGS[pod]="--namespace --resources --yaml --yml --find-path --label --az"
-INSPECT_FLAGS[deployment]="--namespace --resources --yaml --yml --find-path --label --az --spec"
-INSPECT_FLAGS[daemonset]="--namespace --resources --yaml --yml --find-path --az"
-INSPECT_FLAGS[statefulset]="--namespace --resources --yaml --yml --find-path --az"
-INSPECT_FLAGS[replicaset]="--namespace --resources --yaml --yml --find-path --az"
+INSPECT_FLAGS[pod]="--namespace --resources --yaml --find-path --label --az"
+INSPECT_FLAGS[deployment]="--namespace --resources --yaml --find-path --label --az --spec"
+INSPECT_FLAGS[daemonset]="--namespace --resources --yaml --find-path --az"
+INSPECT_FLAGS[statefulset]="--namespace --resources --yaml --find-path --az"
+INSPECT_FLAGS[replicaset]="--namespace --resources --yaml --find-path --az"
 INSPECT_FLAGS[node]="--namespace --label"
 
+# --yml is accepted as an alias by the Go side but intentionally NOT offered
+# in completion menus — included here so the "extra" check verifies absence.
 ALL_INSPECT_FLAGS=(--namespace --resources --yaml --yml --find-path --label --az --spec)
 INSPECT_KINDS=(pod deployment daemonset statefulset replicaset node)
 

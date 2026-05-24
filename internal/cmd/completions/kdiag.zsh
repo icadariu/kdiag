@@ -35,7 +35,7 @@ _kdiag_at_flag_value() {
     local prev_idx=$((_kdiag_all_current - 1))
     (( prev_idx >= 1 )) || return 1
     case "${_kdiag_all_words[prev_idx]}" in
-        -n|--namespace|-l|--label) return 0 ;;
+        -n|--namespace|-l|--label|--find-path) return 0 ;;
     esac
     return 1
 }
@@ -52,7 +52,7 @@ _kdiag_find_kind_for() {
             continue
         fi
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label)
+            -n|--namespace|-l|--label|--find-path)
                 # Flag that takes a value — skip both flag and value.
                 ((i++))
                 ;;
@@ -69,6 +69,66 @@ _kdiag_find_kind_for() {
                 ;;
         esac
     done
+}
+
+# Returns 0 (true) if the command line contains -l or --label or --label=
+_kdiag_has_label() {
+    local i
+    for ((i=2; i<_kdiag_all_current; i++)); do
+        case "${_kdiag_all_words[i]}" in
+            -l|--label|--label=*)
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
+# Count positional arguments after the kind for a subcommand.
+# Reads $_kdiag_all_words/$_kdiag_all_current.
+_kdiag_count_positionals() {
+    local subcmd="$1"
+    local i found_subcmd=0 found_kind=0 count=0
+    for ((i=2; i<=$#_kdiag_all_words; i++)); do
+        if (( ! found_subcmd )); then
+            if [[ "${_kdiag_all_words[i]}" == "$subcmd" ]]; then
+                found_subcmd=1
+            fi
+            continue
+        fi
+        if (( ! found_kind )); then
+            case "${_kdiag_all_words[i]}" in
+                -n|--namespace|-l|--label|--find-path)
+                    ((i++))
+                    ;;
+                -*)
+                    ;;
+                *)
+                    # Found the kind. Do not count the current word as kind if we are typing it.
+                    if (( i == _kdiag_all_current )); then
+                        return
+                    fi
+                    found_kind=1
+                    ;;
+            esac
+            continue
+        fi
+        # We have found both the subcommand and the kind. Now we count positionals after the kind.
+        case "${_kdiag_all_words[i]}" in
+            -n|--namespace|-l|--label|--find-path)
+                ((i++))
+                ;;
+            -*)
+                ;;
+            *)
+                # Don't count the word currently being typed (at cursor index).
+                if (( i != _kdiag_all_current )); then
+                    ((count++))
+                fi
+                ;;
+        esac
+    done
+    printf '%d' "$count"
 }
 
 _kdiag_namespaces() {
@@ -131,7 +191,6 @@ _kdiag() {
         $shared_flags
         '--resources[Show resource requests/limits as YAML (pod/deploy)]'
         '--yaml[Emit yq-safe YAML instead of text]'
-        '--yml[Alias for --yaml]'
         '--find-path[Walk YAML and print yq paths matching a key or value]'
         '--az[Show availability-zone placement]'
         '--spec[deploy: print .spec.template.spec as YAML]'
@@ -174,7 +233,9 @@ _kdiag() {
                     esac
 
                     if [[ -n "$canonical" && "$PREFIX" != -* ]] \
-                       && ! _kdiag_at_flag_value; then
+                       && ! _kdiag_at_flag_value \
+                       && ! _kdiag_has_label \
+                       && [[ "$(_kdiag_count_positionals inspect)" -eq 0 ]]; then
                         # Cursor is at a resource-name positional.
                         _kdiag_resource_names "$canonical"
                     else
@@ -189,7 +250,6 @@ _kdiag() {
                                     $shared_flags
                                     '--resources[Show resource requests/limits as YAML (pod/deploy)]'
                                     '--yaml[Emit yq-safe YAML instead of text]'
-                                    '--yml[Alias for --yaml]'
                                     '--find-path[Walk YAML and print yq paths matching a key or value]'
                                     '--az[Show availability-zone placement]'
                                 )
@@ -199,7 +259,6 @@ _kdiag() {
                                     $shared_flags
                                     '--resources[Show resource requests/limits as YAML (pod/deploy)]'
                                     '--yaml[Emit yq-safe YAML instead of text]'
-                                    '--yml[Alias for --yaml]'
                                     '--find-path[Walk YAML and print yq paths matching a key or value]'
                                     '--az[Show availability-zone placement]'
                                     '--spec[deploy: print .spec.template.spec as YAML]'
@@ -210,7 +269,6 @@ _kdiag() {
                                     '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                     '--resources[Show resource requests/limits as YAML (pod/deploy)]'
                                     '--yaml[Emit yq-safe YAML instead of text]'
-                                    '--yml[Alias for --yaml]'
                                     '--find-path[Walk YAML and print yq paths matching a key or value]'
                                     '--az[Show availability-zone placement]'
                                 )
@@ -242,8 +300,25 @@ _kdiag() {
                         *)             target_kind="$dkind" ;;
                     esac
 
+                    local show_res=0
                     if [[ -n "$target_kind" && "$PREFIX" != -* ]] \
                        && ! _kdiag_at_flag_value; then
+                        local pos_count="$(_kdiag_count_positionals diff)"
+                        case "$dkind" in
+                            rs|replicaset)
+                                if ! _kdiag_has_label && [[ "$pos_count" -eq 0 ]]; then
+                                    show_res=1
+                                fi
+                                ;;
+                            *)
+                                if [[ "$pos_count" -lt 2 ]]; then
+                                    show_res=1
+                                fi
+                                ;;
+                        esac
+                    fi
+
+                    if (( show_res )); then
                         _kdiag_resource_names "$target_kind"
                     else
                         # Per-kind flags must match the Go flagset registered in

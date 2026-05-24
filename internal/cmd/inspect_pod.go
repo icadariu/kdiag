@@ -250,7 +250,7 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
 	fmt.Fprintln(w, "\nFormat:")
-	fmt.Fprintln(w, "  Default output is human-readable text. Pass --yaml (or --yml) for a single")
+	fmt.Fprintln(w, "  Default output is human-readable text. Pass --yaml for a single")
 	fmt.Fprintln(w, "  YAML document on stdout, safe to pipe through yq.")
 	fmt.Fprintln(w, "    single pod:    map { name, namespace, containers, ... }")
 	fmt.Fprintln(w, "    multiple pods: flat list of pod-info maps")
