@@ -30,28 +30,22 @@ func runWorkload(short, label string, args []string) {
 	fs := pflag.NewFlagSet("inspect "+short, pflag.ExitOnError)
 	k, showResources := commonFlags(fs)
 	var (
-		showAZ   bool
-		showYAML bool
+		showAZ bool
+		format string
 	)
-	if cli.ViewFlagSeen(args) != "yml-path" {
+	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-		fs.BoolVar(&showYAML, "yaml", false, "emit yq-safe YAML instead of text")
-		fs.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
-			if name == "yml" {
-				return "yaml"
-			}
-			return pflag.NormalizedName(name)
-		})
+		fs.StringVar(&format, "format", "text", "output format: text|yaml")
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
-		// extractYMLPathArgs rejects --resources with --yml-path explicitly,
+		// extractPathArgs rejects --resources with --path explicitly,
 		// but hide it from -h so users aren't tempted.
 		_ = fs.MarkHidden("resources")
 	}
 	fs.Usage = func() { printWorkloadHelp(os.Stderr, fs, short, label, args) }
 
 	// Check for help in args (it may not be the first element if other flags
-	// like --yml-path appear before -h).
+	// like --path appear before -h).
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" {
 			printWorkloadHelp(os.Stdout, fs, short, label, args)
@@ -59,17 +53,23 @@ func runWorkload(short, label string, args []string) {
 		}
 	}
 
-	// Only parse args that don't contain unregistered flags (like --yml-path).
-	// The dispatcher handles --yml-path before calling the handler, but we
-	// make an exception for help (above) to allow filtering help when --yml-path
-	// is present. Any remaining --yml-path is an error.
-	if cli.ViewFlagSeen(args) == "yml-path" {
-		fmt.Fprintln(os.Stderr, "Error: --yml-path is handled by the dispatcher and should not reach the handler")
+	// Only parse args that don't contain unregistered flags (like --path).
+	// The dispatcher handles --path before calling the handler, but we
+	// make an exception for help (above) to allow filtering help when --path
+	// is present. Any remaining --path is an error.
+	if cli.ViewFlagSeen(args) == "path" {
+		fmt.Fprintln(os.Stderr, "Error: --path is handled by the dispatcher and should not reach the handler")
 		os.Exit(1)
 	}
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
+	switch format {
+	case "", "text", "yaml":
+	default:
+		cli.Fatal(fmt.Errorf("--format must be 'text' or 'yaml', got %q", format))
+	}
+	showYAML := format == "yaml"
 	if len(rest) != 1 {
 		fmt.Fprintf(os.Stderr, "Error: inspect %s requires exactly one <name>\n", short)
 		fs.Usage()
@@ -88,7 +88,7 @@ func runWorkload(short, label string, args []string) {
 		cli.Fatal(err)
 	}
 
-	// --resources/--az are view selectors (mutex); --yaml composes with any view.
+	// --resources/--az are view selectors (mutex); --format composes with any view.
 	if *showResources && showAZ {
 		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)
@@ -233,31 +233,31 @@ func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string, args
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintf(w, "Usage: kdiag inspect %s [flags] <name>\n", short)
 	fmt.Fprintf(w, "\nShow summary and container state for all pods belonging to a %s.\n", label)
-	fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a yq-safe YAML document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML document.")
 	switch seen {
-	case "yml-path":
-		fmt.Fprintln(w, "\nView: --yml-path is set. Pass --yml-path <needle> with -n/-l only.")
+	case "path":
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
 	case "":
-		fmt.Fprintln(w, "\nViews: --resources, --az, --yml-path are mutually exclusive; --yaml composes with --resources/--az.")
+		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive; --format composes with --resources/--az.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")
 	switch seen {
-	case "yml-path":
-		fmt.Fprintf(w, "  kdiag inspect %s my-%s --yml-path memory\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s -l app=my-app --yml-path '*image*'\n", short)
+	case "path":
+		fmt.Fprintf(w, "  kdiag inspect %s my-%s --path memory\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s -l app=my-app --path '*image*'\n", short)
 	case "resources":
 		fmt.Fprintf(w, "  kdiag inspect %s --resources -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --resources --yaml -n my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --resources --format yaml -n my-ns my-%s\n", short, short)
 	case "az":
 		fmt.Fprintf(w, "  kdiag inspect %s --az -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --az --yaml -n my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --az --format yaml -n my-ns my-%s\n", short, short)
 	default:
 		fmt.Fprintf(w, "  kdiag inspect %s -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s my-%s --yaml | yq '.pods | length'\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s my-%s --format yaml | yq '.pods | length'\n", short, short)
 		fmt.Fprintf(w, "  kdiag inspect %s --resources -n my-ns my-%s\n", short, short)
 		fmt.Fprintf(w, "  kdiag inspect %s --az -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s my-%s --yml-path memory\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s my-%s --path memory\n", short, short)
 	}
 }

@@ -35,7 +35,7 @@ _kdiag_at_flag_value() {
     local prev_idx=$((_kdiag_all_current - 1))
     (( prev_idx >= 1 )) || return 1
     case "${_kdiag_all_words[prev_idx]}" in
-        -n|--namespace|-l|--label|--yml-path) return 0 ;;
+        -n|--namespace|-l|--label|--path|--format) return 0 ;;
     esac
     return 1
 }
@@ -52,7 +52,7 @@ _kdiag_find_kind_for() {
             continue
         fi
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--yml-path)
+            -n|--namespace|-l|--label|--path|--format)
                 # Flag that takes a value — skip both flag and value.
                 ((i++))
                 ;;
@@ -98,7 +98,7 @@ _kdiag_count_positionals() {
         fi
         if (( ! found_kind )); then
             case "${_kdiag_all_words[i]}" in
-                -n|--namespace|-l|--label|--yml-path)
+                -n|--namespace|-l|--label|--path|--format)
                     ((i++))
                     ;;
                 -*)
@@ -115,7 +115,7 @@ _kdiag_count_positionals() {
         fi
         # We have found both the subcommand and the kind. Now we count positionals after the kind.
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--yml-path)
+            -n|--namespace|-l|--label|--path|--format)
                 ((i++))
                 ;;
             -*)
@@ -169,7 +169,7 @@ _kdiag() {
     local _i
     for ((_i=2; _i<=$#_kdiag_all_words; _i++)); do
         case "${_kdiag_all_words[_i]}" in
-            --yml-path)   view_seen=ymlpath ;;
+            --path)       view_seen=path ;;
             --resources)  view_seen=resources ;;
             --spec)       view_seen=spec ;;
             --az)         view_seen=az ;;
@@ -203,17 +203,17 @@ _kdiag() {
     )
     local -a inspect_flags
     case "${view_seen}" in
-        ymlpath)
+        path)
             inspect_flags=(
                 $shared_flags
-                '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                '--path[Walk YAML and print yq paths matching a key or value]'
             )
             ;;
         resources)
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '--yaml[Emit yq-safe YAML instead of text]'
+                '--format[Output format: text|yaml]:format:(text yaml)'
                 '--az[Show availability-zone placement]'
             )
             ;;
@@ -221,22 +221,22 @@ _kdiag() {
             inspect_flags=(
                 $shared_flags
                 '--spec[deploy: print .spec.template.spec as YAML]'
-                '--yaml[Emit yq-safe YAML instead of text]'
+                '--format[Output format: text|yaml]:format:(text yaml)'
             )
             ;;
         az)
             inspect_flags=(
                 $shared_flags
                 '--az[Show availability-zone placement]'
-                '--yaml[Emit yq-safe YAML instead of text]'
+                '--format[Output format: text|yaml]:format:(text yaml)'
             )
             ;;
         *)
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '--yaml[Emit yq-safe YAML instead of text]'
-                '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                '--format[Output format: text|yaml]:format:(text yaml)'
+                '--path[Walk YAML and print yq paths matching a key or value]'
                 '--az[Show availability-zone placement]'
                 '--spec[deploy: print .spec.template.spec as YAML]'
             )
@@ -294,17 +294,17 @@ _kdiag() {
                         case "$canonical" in
                             pod)
                                 case "${view_seen}" in
-                                    ymlpath)
+                                    path)
                                         kflags=(
                                             $shared_flags
-                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                         )
                                         ;;
                                     resources)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -312,15 +312,15 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
-                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -328,17 +328,17 @@ _kdiag() {
                                 ;;
                             deployment)
                                 case "${view_seen}" in
-                                    ymlpath)
+                                    path)
                                         kflags=(
                                             $shared_flags
-                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                         )
                                         ;;
                                     resources)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -346,22 +346,22 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--spec[deploy: print .spec.template.spec as YAML]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                         )
                                         ;;
                                     az)
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
-                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                             '--spec[deploy: print .spec.template.spec as YAML]'
                                         )
@@ -370,17 +370,17 @@ _kdiag() {
                                 ;;
                             daemonset|statefulset|replicaset)
                                 case "${view_seen}" in
-                                    ymlpath)
+                                    path)
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
-                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                         )
                                         ;;
                                     resources)
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -388,15 +388,15 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--az[Show availability-zone placement]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--yaml[Emit yq-safe YAML instead of text]'
-                                            '--yml-path[Walk YAML and print yq paths matching a key or value]'
+                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;

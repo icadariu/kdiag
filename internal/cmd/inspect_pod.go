@@ -21,29 +21,22 @@ func runInspectPod(args []string) {
 	var (
 		selector string
 		showAZ   bool
-		showYAML bool
+		format   string
 	)
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
-	if cli.ViewFlagSeen(args) != "yml-path" {
+	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-		fs.BoolVar(&showYAML, "yaml", false, "emit yq-safe YAML instead of text")
-		// `--yml` is an accepted alias for `--yaml`.
-		fs.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
-			if name == "yml" {
-				return "yaml"
-			}
-			return pflag.NormalizedName(name)
-		})
+		fs.StringVar(&format, "format", "text", "output format: text|yaml")
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
-		// extractYMLPathArgs rejects --resources with --yml-path explicitly,
+		// extractPathArgs rejects --resources with --path explicitly,
 		// but hide it from -h so users aren't tempted.
 		_ = fs.MarkHidden("resources")
 	}
 	fs.Usage = func() { printInspectPodHelp(os.Stderr, fs, args) }
 
 	// Check for help in args (it may not be the first element if other flags
-	// like --yml-path appear before -h).
+	// like --path appear before -h).
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" {
 			printInspectPodHelp(os.Stdout, fs, args)
@@ -51,17 +44,23 @@ func runInspectPod(args []string) {
 		}
 	}
 
-	// Only parse args that don't contain unregistered flags (like --yml-path).
-	// The dispatcher handles --yml-path before calling the handler, but we
-	// make an exception for help (above) to allow filtering help when --yml-path
-	// is present. Any remaining --yml-path is an error.
-	if cli.ViewFlagSeen(args) == "yml-path" {
-		fmt.Fprintln(os.Stderr, "Error: --yml-path is handled by the dispatcher and should not reach the handler")
+	// Only parse args that don't contain unregistered flags (like --path).
+	// The dispatcher handles --path before calling the handler, but we
+	// make an exception for help (above) to allow filtering help when --path
+	// is present. Any remaining --path is an error.
+	if cli.ViewFlagSeen(args) == "path" {
+		fmt.Fprintln(os.Stderr, "Error: --path is handled by the dispatcher and should not reach the handler")
 		os.Exit(1)
 	}
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
+	switch format {
+	case "", "text", "yaml":
+	default:
+		cli.Fatal(fmt.Errorf("--format must be 'text' or 'yaml', got %q", format))
+	}
+	showYAML := format == "yaml"
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
@@ -75,7 +74,7 @@ func runInspectPod(args []string) {
 	}
 
 	// --resources, --az (and --spec on deploy) are view selectors — at most
-	// one may be chosen. --yaml is a format flag and composes with any view.
+	// one may be chosen. --format is orthogonal and composes with any view.
 	if *showResources && showAZ {
 		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)
@@ -271,15 +270,15 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
-	if seen != "yml-path" {
-		fmt.Fprintln(w, "\nFormat: default text; --yaml emits a yq-safe YAML doc (map for one pod, list for many).")
+	if seen != "path" {
+		fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML doc (map for one pod, list for many).")
 	}
 	switch seen {
-	case "yml-path":
-		fmt.Fprintln(w, "\nView: --yml-path is set. Pass --yml-path <needle> with -n/-l only.")
+	case "path":
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
 	case "":
-		fmt.Fprintln(w, "\nViews: --resources, --az, --yml-path are mutually exclusive.")
-		fmt.Fprintln(w, "  --yaml composes with --resources and --az; --yml-path takes only -n/-l.")
+		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive.")
+		fmt.Fprintln(w, "  --format composes with --resources and --az; --path takes only -n/-l.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
@@ -291,30 +290,30 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 
 func podExamples(seen string) []string {
 	switch seen {
-	case "yml-path":
+	case "path":
 		return []string{
-			"  kdiag inspect pod my-pod --yml-path qosClass",
-			"  kdiag inspect pod -l app=my-app --yml-path '*image*'",
+			"  kdiag inspect pod my-pod --path qosClass",
+			"  kdiag inspect pod -l app=my-app --path '*image*'",
 		}
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect pod my-pod --resources --yaml",
+			"  kdiag inspect pod my-pod --resources --format yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect pod --az -n my-ns -l app=my-app",
-			"  kdiag inspect pod --az --yaml -l app=my-app",
+			"  kdiag inspect pod --az --format yaml -l app=my-app",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect pod my-pod --yaml | yq '.containers[].name'",
-			"  kdiag inspect pod -l app=my-app --yaml | yq '.[0].name'",
-			"  kdiag inspect pod my-pod --resources --yaml",
+			"  kdiag inspect pod my-pod --format yaml | yq '.containers[].name'",
+			"  kdiag inspect pod -l app=my-app --format yaml | yq '.[0].name'",
+			"  kdiag inspect pod my-pod --resources --format yaml",
 			"  kdiag inspect pod --az -n my-ns -l app=my-app",
-			"  kdiag inspect pod my-pod --yml-path qosClass",
-			"  kdiag inspect pod -l app=my-app --yml-path '*image*'",
+			"  kdiag inspect pod my-pod --path qosClass",
+			"  kdiag inspect pod -l app=my-app --path '*image*'",
 		}
 	}
 }

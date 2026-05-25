@@ -32,7 +32,7 @@ _kdiag_count_positionals() {
     local i
     for ((i=start_idx; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--yml-path|--since)
+            -n|--namespace|-l|--label|--path|--format|--since)
                 # Skip flag and its value
                 ((i++))
                 ;;
@@ -65,7 +65,7 @@ _kdiag_find_kind_idx() {
     local i
     for ((i=2; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--yml-path)
+            -n|--namespace|-l|--label|--path|--format)
                 ((i++))
                 ;;
             -*)
@@ -107,7 +107,11 @@ _kdiag() {
             COMPREPLY=( $(compgen -W "${nss}" -- "${cur}") )
             return
             ;;
-        --label|-l)
+        --label|-l|--path)
+            return
+            ;;
+        --format)
+            COMPREPLY=( $(compgen -W "text yaml" -- "${cur}") )
             return
             ;;
     esac
@@ -126,7 +130,7 @@ _kdiag() {
     local _i
     for ((_i=1; _i<COMP_CWORD; _i++)); do
         case "${COMP_WORDS[_i]}" in
-            --yml-path)   view_seen=ymlpath ;;
+            --path)       view_seen=path ;;
             --resources)  view_seen=resources ;;
             --spec)       view_seen=spec ;;
             --az)         view_seen=az ;;
@@ -135,11 +139,11 @@ _kdiag() {
 
     local inspect_flags
     case "${view_seen}" in
-        ymlpath)    inspect_flags="${shared_flags} --yml-path" ;;
-        resources)  inspect_flags="${shared_flags} --resources --az --yaml" ;;
-        spec)       inspect_flags="${shared_flags} --spec --yaml" ;;
-        az)         inspect_flags="${shared_flags} --az --yaml" ;;
-        *)          inspect_flags="${shared_flags} --resources --az --spec --yaml --yml-path" ;;
+        path)       inspect_flags="${shared_flags} --path" ;;
+        resources)  inspect_flags="${shared_flags} --resources --az --format" ;;
+        spec)       inspect_flags="${shared_flags} --spec --format" ;;
+        az)         inspect_flags="${shared_flags} --az --format" ;;
+        *)          inspect_flags="${shared_flags} --resources --az --spec --format --path" ;;
     esac
 
     case "${cmd}" in

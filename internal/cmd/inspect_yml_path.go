@@ -13,8 +13,8 @@ import (
 	"example.com/kdiag/internal/kube"
 )
 
-// runInspectYMLPath implements the generic, kind-agnostic search behind
-// `kdiag inspect <kind> [<name>|-l <sel>] --yml-path <needle>`.
+// runInspectPath implements the generic, kind-agnostic search behind
+// `kdiag inspect <kind> [<name>|-l <sel>] --path <needle>`.
 //
 // It bypasses the kind-specific handlers entirely: resources are fetched via
 // the dynamic client as Unstructured, then walked as nested maps/slices so
@@ -27,12 +27,12 @@ import (
 //
 // Key-match recursion: when a needle matches a key, the walker emits the
 // match AND descends into the value, so a common needle like `name` will
-// surface every nested occurrence. This is intentional — `--yml-path`
-// is grep-like, not "deepest-match-only".
+// surface every nested occurrence. This is intentional — `--path` is
+// grep-like, not "deepest-match-only".
 //
 // Smart-case matching: an all-lowercase needle is case-insensitive; any
 // uppercase character makes the match case-sensitive.
-func runInspectYMLPath(env *kube.KubeEnv, kind, name, selector, needle string) {
+func runInspectPath(env *kube.KubeEnv, kind, name, selector, needle string) {
 	resolved, err := kube.ResolveResource(env.Mapper, kind)
 	if err != nil {
 		cli.Fatal(fmt.Errorf("resolve %s: %w", kind, err))
@@ -112,6 +112,7 @@ func runInspectYMLPath(env *kube.KubeEnv, kind, name, selector, needle string) {
 // Match semantics (see makeMatcher): a needle without `*` matches the full
 // key or scalar value exactly (so `name` does not match `namespace`); use
 // `*name*` for substring, `name*` for prefix, etc. Smart-case still applies.
+// Reachable via `--path` (see runInspectPath) or `kdiag help yml-path`.
 func walkYMLPath(node any, path, arrayCtx, needle string, smart bool) []string {
 	match := makeMatcher(needle, smart)
 	var out []string
@@ -246,8 +247,8 @@ func emitPath(path string, arrayCtx string) string {
 }
 
 // scalarString stringifies a scalar for value-side matching. Booleans and
-// numbers stringify to their canonical form so `--yml-path true` and
-// `--yml-path 3` work as users expect.
+// numbers stringify to their canonical form so `--path true` and
+// `--path 3` work as users expect.
 func scalarString(v any) string {
 	switch x := v.(type) {
 	case string:

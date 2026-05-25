@@ -28,7 +28,7 @@ func runInspectNode(args []string) {
 	fs.Usage = func() { printInspectNodeHelp(os.Stderr, fs, args) }
 
 	// Check for help in args (it may not be the first element if other flags
-	// like --yml-path appear before -h).
+	// like --path appear before -h).
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" {
 			printInspectNodeHelp(os.Stdout, fs, args)
@@ -36,12 +36,12 @@ func runInspectNode(args []string) {
 		}
 	}
 
-	// Only parse args that don't contain unregistered flags (like --yml-path).
-	// The dispatcher handles --yml-path before calling the handler, but we
-	// make an exception for help (above) to allow filtering help when --yml-path
-	// is present. Any remaining --yml-path is an error.
-	if cli.ViewFlagSeen(args) == "yml-path" {
-		fmt.Fprintln(os.Stderr, "Error: --yml-path is handled by the dispatcher and should not reach the handler")
+	// Only parse args that don't contain unregistered flags (like --path).
+	// The dispatcher handles --path before calling the handler, but we
+	// make an exception for help (above) to allow filtering help when --path
+	// is present. Any remaining --path is an error.
+	if cli.ViewFlagSeen(args) == "path" {
+		fmt.Fprintln(os.Stderr, "Error: --path is handled by the dispatcher and should not reach the handler")
 		os.Exit(1)
 	}
 
@@ -109,20 +109,20 @@ func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect node [<node-name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow zone for one node or a set of nodes.")
-	if seen == "yml-path" {
-		fmt.Fprintln(w, "\nView: --yml-path is set. Pass --yml-path <needle> with -n/-l only.")
+	if seen == "path" {
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
 	fmt.Fprintln(w, "\nExamples:")
 	switch seen {
-	case "yml-path":
-		fmt.Fprintln(w, "  kdiag inspect node my-node --yml-path zone")
-		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a --yml-path taints")
+	case "path":
+		fmt.Fprintln(w, "  kdiag inspect node my-node --path zone")
+		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a --path taints")
 	default:
 		fmt.Fprintln(w, "  kdiag inspect node my-node")
 		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a")
 		fmt.Fprintln(w, "  kdiag inspect node")
-		fmt.Fprintln(w, "  kdiag inspect node my-node --yml-path zone")
+		fmt.Fprintln(w, "  kdiag inspect node my-node --path zone")
 	}
 }
