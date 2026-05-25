@@ -28,23 +28,31 @@ func WantsHelp(args []string) bool {
 type rootCommand struct {
 	Name string
 	Desc string
+	// Meta is true for housekeeping commands (completion, help) that are
+	// hidden from the bare `kdiag` banner but still listed under `--help`.
+	Meta bool
 }
 
 var rootCommands = []rootCommand{
-	{"completion", "Generate shell completion (bash|zsh)"},
-	{"diff", "Diff Kubernetes resources (rs, pod, node, …)"},
-	{"events", "Show events in the current namespace"},
-	{"help", "Show help for a command or topic (e.g. kdiag help inspect)"},
-	{"inspect", "Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement"},
-	{"sort", "Sort resources by creation date (newest last)"},
+	{Name: "completion", Desc: "Generate shell completion (bash|zsh)", Meta: true},
+	{Name: "diff", Desc: "Diff Kubernetes resources (rs, pod, node, …)"},
+	{Name: "events", Desc: "Show events in the current namespace"},
+	{Name: "help", Desc: "Show help for a command or topic (e.g. kdiag help inspect)", Meta: true},
+	{Name: "inspect", Desc: "Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement"},
+	{Name: "sort", Desc: "Sort resources by creation date (newest last)"},
 }
 
 // printCommandList renders the alphabetically-sorted Available Commands
-// block. Column width is fixed wide enough for the longest current name
-// ("completion", 10 chars) plus a 3-space gap.
-func printCommandList(w io.Writer) {
+// block. When includeMeta is false, housekeeping commands (completion, help)
+// are dropped — that's the bare-banner shape. Column width is fixed wide
+// enough for the longest current name ("completion", 10 chars) plus a
+// 3-space gap.
+func printCommandList(w io.Writer, includeMeta bool) {
 	fmt.Fprintln(w, "Available Commands:")
 	for _, c := range rootCommands {
+		if !includeMeta && c.Meta {
+			continue
+		}
 		fmt.Fprintf(w, "  %-13s%s\n", c.Name, c.Desc)
 	}
 }
@@ -56,7 +64,7 @@ func PrintRootBanner(w io.Writer) {
   kdiag <command> [flags] [args]
 
 `)
-	printCommandList(w)
+	printCommandList(w, false)
 }
 
 // PrintRootUsage is the `kdiag --help` / `kdiag -h` screen. Branded title,
@@ -64,7 +72,7 @@ func PrintRootBanner(w io.Writer) {
 // vary per command. Matches §2 of the user spec.
 func PrintRootUsage(w io.Writer) {
 	fmt.Fprint(w, "kdiag — Kubernetes diagnostic CLI\n\n")
-	printCommandList(w)
+	printCommandList(w, true)
 	fmt.Fprint(w, `
 Usage:
   kdiag <command> [flags] [args]
@@ -76,7 +84,7 @@ Flags vary by command. Run "kdiag help <command>" or "kdiag <command> --help" to
 // PrintRootHelp is the `kdiag help` (no topic) screen: just the sorted
 // command list. Matches §3 of the user spec.
 func PrintRootHelp(w io.Writer) {
-	printCommandList(w)
+	printCommandList(w, true)
 }
 
 // PrintInspectUsage prints help for `kdiag inspect`. args is the raw argv
