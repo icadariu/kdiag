@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/spf13/pflag"
 )
 
 // WantsHelp reports whether the first arg requests help (-h, --help, or "help").
@@ -19,51 +21,62 @@ func WantsHelp(args []string) bool {
 	return false
 }
 
-// PrintRootBanner prints the terse banner shown when the user runs `kdiag`
-// with no arguments. Deliberately minimal — no command list — so the bare
-// invocation doesn't impersonate the help screen. `kdiag -h` remains the
-// place to discover commands.
-func PrintRootBanner(w io.Writer) {
-	fmt.Fprint(w, `kdiag — Kubernetes diagnostic CLI
-
-Usage:
-  kdiag <command> [flags] [args]
-
-Use "kdiag -h" for the command list.
-`)
+// rootCommand is the canonical (name, description) pair for one top-level
+// command. rootCommands is the single source of truth used by every root
+// help/usage renderer below — kept alphabetically sorted so output is
+// deterministic everywhere.
+type rootCommand struct {
+	Name string
+	Desc string
 }
 
-// PrintRootUsage prints the top-level help for kdiag. Single-subcommand groups
-// (az, rs) are collapsed onto one line so users see the actual entry point
-// rather than a two-step tree. Kinds for `inspect` are summarized in the
-// description; full list is one level down via `kdiag inspect -h`.
-//
-// `full` selects the help screen (true) vs. the error-fallback screen
-// (false). The branded title line and the auxiliary `completion` command
-// appear only on the help screen; the error paths (unknown command) stay
-// terse and just show the command list + usage hint. `--version` is a
-// flag, not a subcommand, so it does not appear in either mode.
-func PrintRootUsage(w io.Writer, full bool) {
-	if full {
-		fmt.Fprint(w, "kdiag — Kubernetes diagnostic CLI\n\n")
+var rootCommands = []rootCommand{
+	{"completion", "Generate shell completion (bash|zsh)"},
+	{"diff", "Diff Kubernetes resources (rs, pod, node, …)"},
+	{"events", "Show events in the current namespace"},
+	{"help", "Show help for a command or topic (e.g. kdiag help inspect)"},
+	{"inspect", "Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement"},
+	{"sort", "Sort resources by creation date (newest last)"},
+}
+
+// printCommandList renders the alphabetically-sorted Available Commands
+// block. Column width is fixed wide enough for the longest current name
+// ("completion", 10 chars) plus a 3-space gap.
+func printCommandList(w io.Writer) {
+	fmt.Fprintln(w, "Available Commands:")
+	for _, c := range rootCommands {
+		fmt.Fprintf(w, "  %-13s%s\n", c.Name, c.Desc)
 	}
-	fmt.Fprint(w, `Available Commands:
-  inspect      Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement
-  diff         Diff Kubernetes resources (rs, pod, node)
-  events       Show events in the current namespace
-  sort         Sort resources by creation date (newest last)
+}
+
+// PrintRootBanner is the no-args screen: usage line plus the sorted
+// command list. Matches §1 of the user spec.
+func PrintRootBanner(w io.Writer) {
+	fmt.Fprint(w, `Usage:
+  kdiag <command> [flags] [args]
+
 `)
-	if full {
-		fmt.Fprint(w, `  completion   Generate shell completion (bash|zsh)
-  help         Show help for a command or topic (e.g. kdiag help inspect)
-`)
-	}
+	printCommandList(w)
+}
+
+// PrintRootUsage is the `kdiag --help` / `kdiag -h` screen. Branded title,
+// command list, usage line, and a one-line pointer explaining that flags
+// vary per command. Matches §2 of the user spec.
+func PrintRootUsage(w io.Writer) {
+	fmt.Fprint(w, "kdiag — Kubernetes diagnostic CLI\n\n")
+	printCommandList(w)
 	fmt.Fprint(w, `
 Usage:
   kdiag <command> [flags] [args]
 
-Use "kdiag <command> -h" (or "kdiag help <command>") for more information about a command.
+Flags vary by command. Run "kdiag help <command>" or "kdiag <command> --help" to see them.
 `)
+}
+
+// PrintRootHelp is the `kdiag help` (no topic) screen: just the sorted
+// command list. Matches §3 of the user spec.
+func PrintRootHelp(w io.Writer) {
+	printCommandList(w)
 }
 
 // PrintInspectUsage prints help for `kdiag inspect`. args is the raw argv
@@ -80,9 +93,9 @@ Available Subcommands:
 Usage:
   kdiag inspect <subcommand> [flags] [args]
 
-Options:
-  -n, --namespace        Namespace (defaults to current context)
-  -l, --label            Label selector (pod, deploy, node)
+Flags:
+  --namespace <ns>       Namespace (defaults to current context)
+  --label <selector>     Label selector (pod, deploy, node)
   <partial-name>         Partial pod name match (pod only)
 `)
 	if showFormat(seen) {
@@ -109,12 +122,12 @@ Options:
 		fmt.Fprintln(w, ex)
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, `Use "kdiag inspect <subcommand> -h" for details.`)
+	fmt.Fprintln(w, `Use "kdiag inspect <subcommand> --help" for details.`)
 }
 
 // Composition rules for view selectors:
 //   none seen   → show everything
-//   path        → show only -n, -l, --path
+//   path        → show only --namespace, --label, --path
 //   resources   → show --resources, --format, --az; hide --path, --spec
 //   spec        → show --spec, --format; hide --path, --resources, --az
 //   az          → show --az, --format; hide --path, --resources, --spec
@@ -129,14 +142,12 @@ func inspectExamples(seen string) []string {
 	case "path":
 		return []string{
 			"  kdiag inspect pod my-pod --path qosClass",
-			"  kdiag inspect deploy my-deploy --path '*image*'",
-			"  kdiag inspect deploy -l app=my-app --path memory",
+			"  kdiag inspect deploy --label app=my-app --path '*image*'",
 		}
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect pod my-pod --resources --format yaml",
-			"  kdiag inspect deploy my-deploy --resources",
+			"  kdiag inspect deploy my-deploy --resources --format yaml",
 		}
 	case "spec":
 		return []string{
@@ -145,16 +156,13 @@ func inspectExamples(seen string) []string {
 		}
 	case "az":
 		return []string{
-			"  kdiag inspect pod --az -n my-ns -l app=my-app",
+			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
 			"  kdiag inspect deploy my-deploy --az --format yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect pod my-pod --format yaml | yq '.containers[].name'",
-			"  kdiag inspect deploy my-deploy",
 			"  kdiag inspect deploy my-deploy --resources --format yaml",
-			"  kdiag inspect deploy my-deploy --spec",
 			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}
@@ -176,15 +184,14 @@ Matching:
   Smart-case: lowercase needle is case-insensitive; uppercase makes it case-sensitive.
 
 Compatibility:
-  --path composes with -n/--namespace and -l/--label.
+  --path composes with --namespace and --label.
   --path is mutually exclusive with --format, --resources, --spec, --az
   (each selects a different view).
 
 Examples:
   kdiag inspect pod my-pod --path qosClass
-  kdiag inspect deploy my-deploy --path '*image*'
-  kdiag inspect deploy -l app=my-app --path memory
-  kdiag inspect node -l kubernetes.io/hostname --path '*hostname*'
+  kdiag inspect deploy --label app=my-app --path memory
+  kdiag inspect node --label kubernetes.io/hostname --path '*hostname*'
 `)
 }
 
@@ -202,29 +209,23 @@ raw API server response with no filtering.
 The generic form accepts any kind the cluster exposes (built-in or CRD):
 
 Usage:
-  kdiag diff <kind> [-n <ns>] [--full] <name-a> <name-b>
+  kdiag diff <kind> [--namespace <ns>] [--full] <name-a> <name-b>
 
   # Replicaset has an additional revision-diff shape:
-  kdiag diff rs [-n <ns>] [--full] <deployment-name> [<rev-from> <rev-to>]
-  kdiag diff rs [-n <ns>] [--full] -l <label>          [<rev-from> <rev-to>]
+  kdiag diff rs [--namespace <ns>] [--full] <deployment-name> [<rev-from> <rev-to>]
+  kdiag diff rs [--namespace <ns>] [--full] --label <selector>  [<rev-from> <rev-to>]
 
 Flags:
-  -n, --namespace string   namespace (defaults to current context)
-      --full               show the raw API server response (no per-kind noise stripping;
-                           for rs, dump the full RS objects instead of just .spec.template)
+  --namespace <ns>   namespace (defaults to current context)
+  --full             show the raw API server response (no per-kind noise stripping;
+                     for rs, dump the full RS objects instead of just .spec.template)
 
 Examples:
-  kdiag diff pod   -n my-ns pod-abc pod-def
-  kdiag diff cm    -n my-ns config-a config-b
-  kdiag diff svc   -n my-ns api-v1 api-v2
-  kdiag diff deploy -n my-ns app-blue app-green
-  kdiag diff node  node-1 node-2
-  kdiag diff rs -n my-ns my-deployment           # last two revisions
-  kdiag diff rs -n my-ns my-deployment 2 5       # specific revisions
-  kdiag diff rs -n my-ns -l app=my-app 1 3       # via selector
-  kdiag diff pod   -n my-ns a b --full           # include managedFields and status
+  kdiag diff pod --namespace my-ns pod-abc pod-def
+  kdiag diff rs  --namespace my-ns my-deployment           # last two revisions
+  kdiag diff rs  --namespace my-ns my-deployment 2 5 --full
 
-Use "kdiag diff rs -h" for the full revision-diff help.
+Use "kdiag diff rs --help" for the full revision-diff help.
 `)
 }
 
@@ -237,14 +238,14 @@ By default, noise is stripped per-kind. Pass --full to show the raw API server
 response with no filtering.
 
 Usage:
-  kdiag diff %s [-n <ns>] [--full] <name-a> <name-b>
+  kdiag diff %s [--namespace <ns>] [--full] <name-a> <name-b>
 
 Flags:
-  -n, --namespace string   namespace (defaults to current context)
-      --full               show the raw API server response (no per-kind noise stripping)
+  --namespace <ns>   namespace (defaults to current context)
+  --full             show the raw API server response (no per-kind noise stripping)
 
 Examples:
-  kdiag diff %s -n my-ns resource-a resource-b
+  kdiag diff %s --namespace my-ns resource-a resource-b
 
 Use "kdiag diff --help" for a complete list of supported kinds and examples.
 `, kind, kind, kind)
@@ -271,7 +272,7 @@ func PrintSortUsage(w io.Writer) {
 	fmt.Fprint(w, `Sort resources by creation date (ascending — newest entry last, like `+"`kubectl logs`"+`).
 
 Usage:
-  kdiag sort <kind> [-n <ns> | -A]
+  kdiag sort <kind> [--namespace <ns> | --all-namespaces]
 
 Kinds:
   Any resource the API server exposes — built-ins (pod, deployment, daemonset,
@@ -282,18 +283,16 @@ Kinds:
   are all accepted.
 
 Flags:
-  -n, --namespace        Namespace (defaults to current context)
-  -A, --all-namespaces   List resources across all namespaces (overrides -n)
+  --namespace <ns>     Namespace (defaults to current context)
+  --all-namespaces     List resources across all namespaces (overrides --namespace)
 
 Notes:
-  Cluster-scoped kinds (node, namespace, pv, …) ignore -n and -A.
+  Cluster-scoped kinds (node, namespace, pv, …) ignore --namespace and --all-namespaces.
 
 Examples:
   kdiag sort pod
-  kdiag sort deploy -n my-ns
-  kdiag sort cm -A
-  kdiag sort node
-  kdiag sort certificates.cert-manager.io -A
+  kdiag sort deploy --all-namespaces
+  kdiag sort certificates.cert-manager.io --all-namespaces
 `)
 }
 
@@ -301,23 +300,20 @@ Examples:
 func PrintEventsUsage(w io.Writer) {
 	fmt.Fprint(w, `Show events (Normal and Warning) in the current namespace.
 
-Sorted by their effective timestamp ascending (newest entry last, like ` + "`kubectl logs`" + `).
+Sorted by their effective timestamp ascending (newest entry last, like `+"`kubectl logs`"+`).
 
 Usage:
-  kdiag events [-n <ns> | -A] [--since <duration>]
+  kdiag events [--namespace <ns> | --all-namespaces] [--since <duration>]
 
 Flags:
+  --namespace <ns>       Namespace (defaults to current context)
+  --all-namespaces       List events across all namespaces (overrides --namespace)
   --since <duration>     Only show events newer than this duration, e.g. 30s, 5m, 2h (default: 1h)
-  -n, --namespace        Namespace (defaults to current context)
-  -A, --all-namespaces   List events across all namespaces (overrides -n)
 
 Examples:
   kdiag events
-  kdiag events -n my-ns
-  kdiag events -A --since 30m
-  kdiag events -n my-ns --since 24h
-
-Use "kdiag events -h" for flags.
+  kdiag events --all-namespaces --since 30m
+  kdiag events --namespace my-ns --since 24h
 `)
 }
 
@@ -340,4 +336,68 @@ func ViewFlagSeen(args []string) string {
 		}
 	}
 	return ""
+}
+
+// FormatFlagsLongOnly renders pflag flag usages in pflag's standard
+// two-column shape, but omits the short-form alias from the head column
+// (so `-n, --namespace string` becomes `--namespace string`).
+//
+// Used by per-command help printers that want a visible Flags: block
+// without advertising the single-dash aliases (which remain functional
+// at parse time — they're just hidden from documentation).
+func FormatFlagsLongOnly(fs *pflag.FlagSet) string {
+	type row struct {
+		head string
+		desc string
+	}
+	var rows []row
+	fs.VisitAll(func(f *pflag.Flag) {
+		if f.Hidden {
+			return
+		}
+		head := "--" + f.Name
+		if t := f.Value.Type(); t != "bool" {
+			head += " " + t
+		}
+		desc := f.Usage
+		if showDefault(f) {
+			desc += fmt.Sprintf(" (default %s)", f.DefValue)
+		}
+		rows = append(rows, row{head, desc})
+	})
+	width := 0
+	for _, r := range rows {
+		if len(r.head) > width {
+			width = len(r.head)
+		}
+	}
+	var b strings.Builder
+	for _, r := range rows {
+		b.WriteString("  ")
+		b.WriteString(r.head)
+		b.WriteString(strings.Repeat(" ", width-len(r.head)+3))
+		b.WriteString(r.desc)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// showDefault decides whether a flag's default is worth printing — true
+// for non-zero values of any type. Mirrors pflag's own behaviour closely
+// enough that the resulting block reads the same minus the short alias.
+func showDefault(f *pflag.Flag) bool {
+	switch f.Value.Type() {
+	case "bool":
+		return f.DefValue != "false"
+	case "string":
+		return f.DefValue != ""
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return f.DefValue != "0"
+	case "duration":
+		return f.DefValue != "0s"
+	default:
+		return f.DefValue != ""
+	}
 }

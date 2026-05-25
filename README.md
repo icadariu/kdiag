@@ -3,11 +3,18 @@
 A Kubernetes diagnostic CLI tool for inspecting pod state
 and availability-zone distribution.
 
-Help is nested kubectl-style: `kdiag -h` lists top-level commands,
-`kdiag inspect -h` lists kinds, and `kdiag inspect pod -h` shows that
-leaf's flags and examples. `kdiag help <command>` is equivalent to
-`kdiag <command> -h`; long-form topics live under `kdiag help <topic>`
-(e.g. `kdiag help yml-path` for the `--path` flag).
+Help is nested kubectl-style:
+
+- `kdiag` (no args) prints a Usage line plus the sorted Available Commands list.
+- `kdiag --help` (or `-h`) adds the branded title and a pointer explaining
+  that flags vary per command.
+- `kdiag help` (no topic) prints just the Available Commands list — terse,
+  scriptable.
+- `kdiag help <command>` is equivalent to `kdiag <command> --help` (byte-for-byte
+  identical output); long-form topics live under `kdiag help <topic>`
+  (e.g. `kdiag help yml-path` for the `--path` flag).
+
+All flags use the `--long` form in the documentation below.
 
 ## Commands
 
@@ -18,9 +25,9 @@ Show the state of one pod or a group of pods matched by a label selector.
 ```text
 kdiag inspect pod [flags]
 kdiag inspect pod [flags] <partial-pod-name>
-kdiag inspect pod [flags] -l <label>
+kdiag inspect pod [flags] --label <selector>
 kdiag inspect po  [flags] <partial-pod-name>
-kdiag inspect po  [flags] -l <label>
+kdiag inspect po  [flags] --label <selector>
 ```
 
 With no name and no selector, lists every pod in the namespace.
@@ -72,19 +79,19 @@ output is a flat YAML list, so downstream pipelines stay predictable.
 kdiag inspect pod gateway-proxy
 
 # All pods matching a selector
-kdiag inspect pod -n example-system -l 'app=gateway-proxy'
+kdiag inspect pod --namespace example-system --label 'app=gateway-proxy'
 
 # Availability-zone placement for all pods in namespace
-kdiag inspect pod --az -n example-system
+kdiag inspect pod --az --namespace example-system
 
 # AZ placement filtered by selector
-kdiag inspect pod --az -n example-system -l 'app=gateway-proxy'
+kdiag inspect pod --az --namespace example-system --label 'app=gateway-proxy'
 
 # Single pod, full output as YAML (yq-pipeable)
 kdiag inspect pod my-pod --format yaml | yq '.containers[].name'
 
 # Resources for every matching pod as YAML (flat list)
-kdiag inspect pod -l 'app=gateway-proxy' --format yaml | yq '.[0].name'
+kdiag inspect pod --label 'app=gateway-proxy' --format yaml | yq '.[0].name'
 ```
 
 ---
@@ -95,14 +102,14 @@ Show a kind-specific workload summary on top of the per-pod container
 state. Pod selection follows each workload's own `Spec.Selector`.
 
 ```text
-kdiag inspect deploy [flags] [<deployment-name> | -l <label>]
+kdiag inspect deploy [flags] [<deployment-name> | --label <selector>]
 kdiag inspect ds     [flags] <daemonset-name>
 kdiag inspect sts    [flags] <statefulset-name>
 kdiag inspect rs     [flags] <replicaset-name>
 ```
 
 For `inspect deploy`, the deployment can be identified either by positional
-name or by `--label`/`-l` (which must match exactly one Deployment in the
+name or by `--label` (which must match exactly one Deployment in the
 namespace — mirrors `diff rs`).
 
 Aliases match `kubectl`: `deploy` ↔ `deployment`, `ds` ↔ `daemonset`,
@@ -151,18 +158,18 @@ meaning.
 kdiag inspect deploy my-deployment
 
 # Identify the deployment via label instead of name
-kdiag inspect deploy -n example-system -l 'app=my-app'
+kdiag inspect deploy --namespace example-system --label 'app=my-app'
 
 # In a specific namespace
-kdiag inspect deploy -n example-system my-deployment
+kdiag inspect deploy --namespace example-system my-deployment
 
 # AZ placement for a deployment's pods
-kdiag inspect deploy --az -n example-system my-deployment
+kdiag inspect deploy --az --namespace example-system my-deployment
 
 # Daemonset, statefulset, replicaset
-kdiag inspect ds  -n kube-system kube-proxy
-kdiag inspect sts -n my-ns my-statefulset
-kdiag inspect rs  -n my-ns my-replicaset-abc123
+kdiag inspect ds  --namespace kube-system kube-proxy
+kdiag inspect sts --namespace my-ns my-statefulset
+kdiag inspect rs  --namespace my-ns my-replicaset-abc123
 
 # Deployment summary as YAML (yq-pipeable)
 kdiag inspect deploy my-deployment --format yaml | yq '.pods | length'
@@ -171,7 +178,7 @@ kdiag inspect deploy my-deployment --format yaml | yq '.pods | length'
 kdiag inspect deploy my-deployment --spec
 
 # Deployment template resources as YAML
-kdiag inspect deploy --resources -n my-ns my-deployment
+kdiag inspect deploy --resources --namespace my-ns my-deployment
 ```
 
 ---
@@ -179,7 +186,7 @@ kdiag inspect deploy --resources -n my-ns my-deployment
 ### `inspect node`
 
 Show a per-node summary for one node or a set of nodes. Nodes are
-cluster-scoped, so `-n/--namespace` is accepted (for uniform CLI shape) but
+cluster-scoped, so `--namespace` is accepted (for uniform CLI shape) but
 silently ignored.
 
 Node summary fields:
@@ -190,8 +197,8 @@ Node summary fields:
 - Allocatable: cpu, memory, pods (and any other resources the node exposes)
 
 ```text
-kdiag inspect node [<node-name> | -l <label>]
-kdiag inspect no   [<node-name> | -l <label>]
+kdiag inspect node [<node-name> | --label <selector>]
+kdiag inspect no   [<node-name> | --label <selector>]
 ```
 
 ### `inspect node` examples
@@ -201,7 +208,7 @@ kdiag inspect no   [<node-name> | -l <label>]
 kdiag inspect node my-node
 
 # All nodes in a zone
-kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a
+kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a
 
 # All nodes in the cluster
 kdiag inspect node
@@ -258,7 +265,7 @@ kdiag inspect pod my-pod --path name
 # .spec.containers[0].name
 
 # Glob match for partial keys (multi-container deployment)
-kdiag inspect deploy kdiag-multicont -n kdiag-test --path memory
+kdiag inspect deploy kdiag-multicont --namespace kdiag-test --path memory
 # api:
 #   .spec.template.spec.containers[0].resources.limits.memory
 #   .spec.template.spec.containers[0].resources.requests.memory
@@ -267,7 +274,7 @@ kdiag inspect deploy kdiag-multicont -n kdiag-test --path memory
 #   .spec.template.spec.containers[1].resources.requests.memory
 
 # Search across all pods matched by a selector
-kdiag inspect pod -l app=test-app -n kdiag-test --path image
+kdiag inspect pod --label app=test-app --namespace kdiag-test --path image
 # Pod/test-app-6dd566fbff-jd2vw:
 #   .spec.containers[0].image
 #   .status.containerStatuses[0].image
@@ -296,7 +303,7 @@ Output uses coloured unified diff (`diff --color=always -u`).
 
 ```text
 kdiag diff rs [flags] <deployment-name> [<rev-from> <rev-to>]
-kdiag diff rs [flags] -l <label> [<rev-from> <rev-to>]
+kdiag diff rs [flags] --label <selector> [<rev-from> <rev-to>]
 ```
 
 `diff rs` also accepts the generic two-name form
@@ -308,19 +315,19 @@ dumps the full RS objects (managedFields preserved) instead of just
 
 ```sh
 # By deployment name (default: last two revisions)
-kdiag diff rs -n my-ns my-deployment
+kdiag diff rs --namespace my-ns my-deployment
 
 # Specific revisions — compare current with three behind
-kdiag diff rs -n my-ns my-deployment 2 5
+kdiag diff rs --namespace my-ns my-deployment 2 5
 
 # By label selector (errors if more than one deployment matches)
-kdiag diff rs -n my-ns -l 'app=my-app'
+kdiag diff rs --namespace my-ns --label 'app=my-app'
 
 # Selector + specific revisions
-kdiag diff rs -n my-ns -l 'app=my-app' 1 3
+kdiag diff rs --namespace my-ns --label 'app=my-app' 1 3
 
 # Two RS by name (generic shape, full objects)
-kdiag diff rs -n my-ns my-rs-abc my-rs-def --full
+kdiag diff rs --namespace my-ns my-rs-abc my-rs-def --full
 ```
 
 If a requested revision isn't in the deployment's history, the error
@@ -385,18 +392,18 @@ stripping at all. Use this when you specifically want the raw "compare
 two files in Linux" view.
 
 ```text
-kdiag diff <kind> [-n <ns>] [--full] <name-a> <name-b>
+kdiag diff <kind> [--namespace <ns>] [--full] <name-a> <name-b>
 ```
 
 ### `diff <any-kind>` examples
 
 ```sh
-kdiag diff pod    -n my-ns pod-abc123 pod-def456
-kdiag diff cm     -n my-ns config-a config-b
-kdiag diff svc    -n my-ns api-v1 api-v2
-kdiag diff deploy -n my-ns app-blue app-green
+kdiag diff pod    --namespace my-ns pod-abc123 pod-def456
+kdiag diff cm     --namespace my-ns config-a config-b
+kdiag diff svc    --namespace my-ns api-v1 api-v2
+kdiag diff deploy --namespace my-ns app-blue app-green
 kdiag diff node   node-1 node-2
-kdiag diff pod    -n my-ns a b --full      # include status, managedFields, annotations
+kdiag diff pod    --namespace my-ns a b --full      # include status, managedFields, annotations
 ```
 
 ---
@@ -406,17 +413,17 @@ kdiag diff pod    -n my-ns a b --full      # include status, managedFields, anno
 Show recent events (Normal and Warning) in the current namespace.
 
 ```text
-kdiag events [-n <ns> | -A] [--since <duration>]
+kdiag events [--namespace <ns> | --all-namespaces] [--since <duration>]
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `-n, --namespace` | current context namespace | Namespace to inspect |
-| `-A, --all-namespaces` | false | List events across all namespaces (overrides `-n`) |
+| `--namespace` | current context namespace | Namespace to inspect |
+| `--all-namespaces` | false | List events across all namespaces (overrides `--namespace`) |
 | `--since` | `1h` | Only show events newer than this duration. Accepts Go duration syntax (e.g. `30s`, `5m`, `2h`) |
 
 Output columns: `AGE`, `TYPE`, `REASON`, `OBJECT` (`Kind/name`), `MESSAGE`.
-With `-A`, a `NAMESPACE` column is inserted after `AGE`.
+With `--all-namespaces`, a `NAMESPACE` column is inserted after `AGE`.
 Sorted by effective event timestamp ascending — newest entry is last, the same orientation as `kubectl logs`.
 The effective timestamp falls back across `Series.LastObservedTime` → `LastTimestamp` → `EventTime` → `FirstTimestamp` → `CreationTimestamp`, so events emitted via `events.k8s.io/v1` (e.g. `FailedScheduling` from the scheduler) are included.
 
@@ -427,10 +434,10 @@ The effective timestamp falls back across `Series.LastObservedTime` → `LastTim
 kdiag events
 
 # All events across all namespaces (last 30 minutes)
-kdiag events -A --since 30m
+kdiag events --all-namespaces --since 30m
 
 # Look back 24h
-kdiag events -n my-ns --since 24h
+kdiag events --namespace my-ns --since 24h
 ```
 
 ---
@@ -441,7 +448,7 @@ List resources of a given kind sorted by creation date (ascending — newest ent
 the same orientation as `kubectl logs`).
 
 ```text
-kdiag sort <kind> [-n <ns> | -A]
+kdiag sort <kind> [--namespace <ns> | --all-namespaces]
 ```
 
 Supported kinds: **any resource the API server exposes** — built-ins (pod, deployment,
@@ -457,14 +464,14 @@ discovery information, so:
 - Fully qualified `resource.group` forms work for disambiguating CRDs
   (`widgets.demo.example.com`).
 - Cluster-scoped kinds (`node`, `namespace`, `persistentvolume`, `customresourcedefinition`,
-  …) are detected automatically; `-n` and `-A` are ignored for them.
+  …) are detected automatically; `--namespace` and `--all-namespaces` are ignored for them.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `-n, --namespace` | current context namespace | Namespace to query |
-| `-A, --all-namespaces` | false | List across all namespaces (overrides `-n`) |
+| `--namespace` | current context namespace | Namespace to query |
+| `--all-namespaces` | false | List across all namespaces (overrides `--namespace`) |
 
-Output columns: `AGE`, `CREATED` (RFC3339, UTC), `NAME`. With `-A` a `NAMESPACE`
+Output columns: `AGE`, `CREATED` (RFC3339, UTC), `NAME`. With `--all-namespaces` a `NAMESPACE`
 column is inserted after `CREATED`.
 
 ### `sort` examples
@@ -474,19 +481,19 @@ column is inserted after `CREATED`.
 kdiag sort pod
 
 # Deployments across all namespaces
-kdiag sort deploy -A
+kdiag sort deploy --all-namespaces
 
 # ConfigMaps in a specific namespace (shortname)
-kdiag sort cm -n kube-system
+kdiag sort cm --namespace kube-system
 
 # All ingresses cluster-wide
-kdiag sort ing -A
+kdiag sort ing --all-namespaces
 
 # Nodes by creation date
 kdiag sort node
 
 # A CRD, group-qualified
-kdiag sort certificates.cert-manager.io -A
+kdiag sort certificates.cert-manager.io --all-namespaces
 ```
 
 ---
@@ -513,10 +520,11 @@ The values are stamped at build time via `-ldflags` on `version`,
 
 ## Common flags
 
-| Flag | Short | Description |
-| ------ | ------- | ------------- |
-| `--namespace <ns>` | `-n` | Namespace (defaults to current context) |
-| `--label <selector>` | `-l` | Label selector (where applicable) |
+| Flag | Description |
+| ---- | ----------- |
+| `--namespace <ns>` | Namespace (defaults to current context) |
+| `--label <selector>` | Label selector (where applicable) |
+| `--all-namespaces` | List across all namespaces (`events`, `sort`) |
 
 kdiag uses the standard kubeconfig precedence — `$KUBECONFIG` env var →
 `~/.kube/config`. There is no `--kubeconfig`/`--context` flag; set `KUBECONFIG`
@@ -556,20 +564,21 @@ The binary embeds `version` (from `git describe --tags --always --dirty`),
 ## Shell completion
 
 `kdiag completion <shell>` prints a completion script to stdout for
-`bash` or `zsh`. Scripts cover top-level subcommands, `inspect`
-kinds, `diff` and `sort` kinds (any kind the cluster exposes — built-in
-or CRD), and per-command flags (`-n/--namespace`, `-l/--label`,
-`--full`, `--format`, `--resources`, `--spec`, `--az`, `--path`).
+`bash` or `zsh`. Scripts cover top-level subcommands (including `help` and
+`completion`), `inspect` kinds, `diff` and `sort` kinds (any kind the
+cluster exposes — built-in or CRD), and per-command flags (`--namespace`,
+`--label`, `--all-namespaces`, `--full`, `--format`, `--resources`,
+`--spec`, `--az`, `--path`).
 
 Namespace and resource names are completed dynamically by querying the
 cluster — for example:
 
 ```sh
-kdiag inspect deploy -n <TAB>          # → list of namespaces
-kdiag inspect deploy -n my-ns my-<TAB> # → deployments named my-* in my-ns
-kdiag diff cm -n my-ns <TAB>           # → configmap names in my-ns
-kdiag diff rs -n my-ns <TAB>           # → deployment names (diff target)
-kdiag inspect node <TAB>               # → cluster nodes
+kdiag inspect deploy --namespace <TAB>          # → list of namespaces
+kdiag inspect deploy --namespace my-ns my-<TAB> # → deployments named my-* in my-ns
+kdiag diff cm --namespace my-ns <TAB>           # → configmap names in my-ns
+kdiag diff rs --namespace my-ns <TAB>           # → deployment names (diff target)
+kdiag inspect node <TAB>                        # → cluster nodes
 ```
 
 Dynamic lookups happen via a hidden `kdiag __complete` helper invoked by
@@ -642,15 +651,24 @@ internal/
      so the pod name can appear before or after flags (like `kubectl`)
    - Build a `*kube.KubeEnv` via `kube.NewKubeEnv(k)`
    - Use helpers from `internal/kube` and `internal/cli` as needed
-2. Add a `case "<name>": cmd.Run<Name>(args[1:])` branch in `main.go`
-3. Add a one-line entry to `PrintRootUsage` in `internal/cli/usage.go`
-   and a `PrintXyzUsage` printer if the command has its own subcommands
+2. Add a `case "<name>": cmd.Run<Name>(args[1:])` branch in `main.go` plus a
+   matching branch in `handleHelp` so `kdiag help <name>` re-dispatches as
+   `kdiag <name> --help`
+3. Add the new command to `rootCommands` in `internal/cli/usage.go` (kept
+   alphabetically sorted — the three root screens read from this single
+   source of truth) and add a `PrintXyzUsage` printer if the command has
+   its own subcommands
 4. Handle `cli.WantsHelp(args)` in the new dispatcher (route to the right
-   printer and return) so `kdiag <name> -h` works at every level
+   printer and return) so `kdiag <name> --help` produces the same output
+   as `kdiag help <name>`. Per-command help printers should render their
+   `Flags:` block via `cli.FormatFlagsLongOnly(fs)` — that hides the
+   single-dash aliases from the documentation while leaving them
+   functional at parse time
 5. Update the static completion scripts in `internal/cmd/completions/`
-   (`kdiag.bash`, `kdiag.zsh`) to surface the new command, any subcommands,
-   and any new flags. Run `make autocompletion` to refresh persisted
-   files and bust the zsh cache.
+   (`kdiag.bash`, `kdiag.zsh`) to surface the new command in `top_cmds`
+   (alphabetical) and the `help`-arg handler, any subcommands, and any new
+   flags. Run `make autocompletion` to refresh persisted files and bust
+   the zsh cache.
 
 Kubernetes-specific utility functions (zone lookup, container state decoding,
 resource extraction) belong in `internal/kube/helpers.go` so they can be

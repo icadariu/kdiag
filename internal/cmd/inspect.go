@@ -217,10 +217,10 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 		name = rest[0]
 	}
 	if name != "" && selector != "" {
-		cli.Fatal(fmt.Errorf("--path: provide either <name> or --label/-l (not both)"))
+		cli.Fatal(fmt.Errorf("--path: provide either <name> or --label (not both)"))
 	}
 	if name == "" && selector == "" {
-		cli.Fatal(fmt.Errorf("--path: provide either <name> or --label/-l"))
+		cli.Fatal(fmt.Errorf("--path: provide either <name> or --label"))
 	}
 	return needle, name, selector, ns, true
 }
