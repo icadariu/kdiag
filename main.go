@@ -14,8 +14,8 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		cli.PrintRootBanner(os.Stderr)
-		os.Exit(1)
+		cli.PrintRootBanner(os.Stdout)
+		return
 	}
 
 	args := os.Args[1:]
@@ -38,7 +38,7 @@ func main() {
 		handleHelp(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown command: %s\n\n", args[0])
-		cli.PrintRootUsage(os.Stderr, false)
+		cli.PrintRootUsage(os.Stderr)
 		os.Exit(1)
 	}
 }
@@ -46,18 +46,24 @@ func main() {
 // handleHelp implements `kdiag help [topic]` plus the top-level `-h`/`--help`
 // shortcuts. Forms supported:
 //
-//	kdiag help                  → root usage
+//	kdiag -h | --help           → full root usage (title, commands, usage, hint)
+//	kdiag help                  → terse Available Commands block only
 //	kdiag help yml-path | path  → topic page for --path
-//	kdiag help <command> [...]  → equivalent to `kdiag <command> ... -h`
+//	kdiag help <command> [...]  → equivalent to `kdiag <command> ... --help`
 //
 // args[0] is always one of "-h", "--help", "help". Anything after it is the
 // topic/command path. For `-h`/`--help` we only honor the bare form.
 func handleHelp(args []string) {
-	// `-h` / `--help` as the top-level token: only the bare form prints root
-	// usage. We don't treat them as a generic dispatcher to avoid surprising
-	// users who type `kdiag --help inspect`.
-	if args[0] != "help" || len(args) == 1 {
-		cli.PrintRootUsage(os.Stdout, true)
+	// `-h` / `--help` at the top level → full --help screen. We don't treat
+	// them as a generic dispatcher to avoid surprising users who type
+	// `kdiag --help inspect`.
+	if args[0] != "help" {
+		cli.PrintRootUsage(os.Stdout)
+		return
+	}
+	// `kdiag help` with no topic → just the Available Commands list.
+	if len(args) == 1 {
+		cli.PrintRootHelp(os.Stdout)
 		return
 	}
 
@@ -68,10 +74,10 @@ func handleHelp(args []string) {
 		return
 	}
 
-	// Re-enter the dispatch by appending `-h` and routing to the matching
-	// subcommand. `kdiag help inspect pod` → runInspect with ["pod", "-h"].
+	// Re-enter the dispatch by appending `--help` and routing to the matching
+	// subcommand. `kdiag help inspect pod` → runInspect with ["pod", "--help"].
 	sub := append([]string{}, args[2:]...)
-	sub = append(sub, "-h")
+	sub = append(sub, "--help")
 	switch topic {
 	case "inspect":
 		cmd.RunInspect(sub)
@@ -85,7 +91,7 @@ func handleHelp(args []string) {
 		cmd.RunCompletion(sub)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown help topic: %s\n\n", topic)
-		cli.PrintRootUsage(os.Stderr, false)
+		cli.PrintRootUsage(os.Stderr)
 		os.Exit(1)
 	}
 }

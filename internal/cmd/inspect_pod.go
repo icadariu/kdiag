@@ -64,7 +64,7 @@ func runInspectPod(args []string) {
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
-		fmt.Fprintln(os.Stderr, "Error: provide either <pod-name> OR --label/-l (not both)")
+		fmt.Fprintln(os.Stderr, "Error: provide either <pod-name> OR --label (not both)")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -268,20 +268,20 @@ func resourceSliceFor(p corev1.Pod) []containerResourceSlice {
 
 func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
-	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | -l <label>]")
+	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
 	if seen != "path" {
 		fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML doc (map for one pod, list for many).")
 	}
 	switch seen {
 	case "path":
-		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  --format composes with --resources and --az; --path takes only -n/-l.")
+		fmt.Fprintln(w, "  --format composes with --resources and --az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
-	fmt.Fprint(w, fs.FlagUsages())
+	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
 	fmt.Fprintln(w, "\nExamples:")
 	for _, ex := range podExamples(seen) {
 		fmt.Fprintln(w, ex)
@@ -293,7 +293,7 @@ func podExamples(seen string) []string {
 	case "path":
 		return []string{
 			"  kdiag inspect pod my-pod --path qosClass",
-			"  kdiag inspect pod -l app=my-app --path '*image*'",
+			"  kdiag inspect pod --label app=my-app --path '*image*'",
 		}
 	case "resources":
 		return []string{
@@ -302,18 +302,14 @@ func podExamples(seen string) []string {
 		}
 	case "az":
 		return []string{
-			"  kdiag inspect pod --az -n my-ns -l app=my-app",
-			"  kdiag inspect pod --az --format yaml -l app=my-app",
+			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
+			"  kdiag inspect pod --az --format yaml --label app=my-app",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect pod my-pod --format yaml | yq '.containers[].name'",
-			"  kdiag inspect pod -l app=my-app --format yaml | yq '.[0].name'",
-			"  kdiag inspect pod my-pod --resources --format yaml",
-			"  kdiag inspect pod --az -n my-ns -l app=my-app",
-			"  kdiag inspect pod my-pod --path qosClass",
-			"  kdiag inspect pod -l app=my-app --path '*image*'",
+			"  kdiag inspect pod --label app=my-app --format yaml",
+			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
 		}
 	}
 }

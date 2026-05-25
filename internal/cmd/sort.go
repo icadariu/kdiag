@@ -43,7 +43,7 @@ func RunSort(args []string) {
 	var k kube.KubeFlags
 	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (defaults to current context)")
 	var allNamespaces bool
-	fs.BoolVarP(&allNamespaces, "all-namespaces", "A", false, "list resources across all namespaces (overrides -n)")
+	fs.BoolVarP(&allNamespaces, "all-namespaces", "A", false, "list resources across all namespaces (overrides --namespace)")
 	fs.Usage = func() { cli.PrintSortUsage(os.Stderr) }
 
 	// Locate the kind token, skipping flags + their values so `-n foo pod`

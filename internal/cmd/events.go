@@ -27,7 +27,7 @@ func RunEvents(args []string) {
 	var k kube.KubeFlags
 	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (defaults to current context)")
 	var allNamespaces bool
-	fs.BoolVarP(&allNamespaces, "all-namespaces", "A", false, "list events across all namespaces (overrides -n)")
+	fs.BoolVarP(&allNamespaces, "all-namespaces", "A", false, "list events across all namespaces (overrides --namespace)")
 	var since time.Duration
 	fs.DurationVar(&since, "since", time.Hour, "only show events newer than this duration (e.g. 30s, 5m, 2h)")
 	fs.Usage = func() { printEventsHelp(os.Stderr, fs) }
@@ -141,10 +141,9 @@ func printEventsHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "\nShow events (Normal and Warning) in the current namespace.")
 	fmt.Fprintln(w, "Events are sorted by their effective timestamp ascending (newest entry last, like `kubectl logs`).")
 	fmt.Fprintln(w, "\nFlags:")
-	fmt.Fprint(w, fs.FlagUsages())
+	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
 	fmt.Fprintln(w, "\nExamples:")
 	fmt.Fprintln(w, "  kdiag events")
-	fmt.Fprintln(w, "  kdiag events -n my-ns")
-	fmt.Fprintln(w, "  kdiag events -A --since 30m")
-	fmt.Fprintln(w, "  kdiag events -n my-ns --since 24h")
+	fmt.Fprintln(w, "  kdiag events --all-namespaces --since 30m")
+	fmt.Fprintln(w, "  kdiag events --namespace my-ns --since 24h")
 }

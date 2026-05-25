@@ -236,28 +236,26 @@ func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string, args
 	fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML document.")
 	switch seen {
 	case "path":
-		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive; --format composes with --resources/--az.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
-	fmt.Fprint(w, fs.FlagUsages())
+	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
 	fmt.Fprintln(w, "\nExamples:")
 	switch seen {
 	case "path":
 		fmt.Fprintf(w, "  kdiag inspect %s my-%s --path memory\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s -l app=my-app --path '*image*'\n", short)
+		fmt.Fprintf(w, "  kdiag inspect %s --label app=my-app --path '*image*'\n", short)
 	case "resources":
-		fmt.Fprintf(w, "  kdiag inspect %s --resources -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --resources --format yaml -n my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --resources --namespace my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --resources --format yaml --namespace my-ns my-%s\n", short, short)
 	case "az":
-		fmt.Fprintf(w, "  kdiag inspect %s --az -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --az --format yaml -n my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --az --namespace my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --az --format yaml --namespace my-ns my-%s\n", short, short)
 	default:
-		fmt.Fprintf(w, "  kdiag inspect %s -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s my-%s --format yaml | yq '.pods | length'\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --resources -n my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --az -n my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --namespace my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --resources --format yaml --namespace my-ns my-%s\n", short, short)
 		fmt.Fprintf(w, "  kdiag inspect %s my-%s --path memory\n", short, short)
 	}
 }

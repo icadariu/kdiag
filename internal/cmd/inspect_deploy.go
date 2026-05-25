@@ -74,11 +74,11 @@ func runInspectDeploy(args []string) {
 	case len(rest) == 1 && selector == "":
 	case len(rest) == 0 && selector != "":
 	case len(rest) > 0 && selector != "":
-		fmt.Fprintln(os.Stderr, "Error: provide either <name> OR --label/-l (not both)")
+		fmt.Fprintln(os.Stderr, "Error: provide either <name> OR --label (not both)")
 		fs.Usage()
 		os.Exit(1)
 	default:
-		fmt.Fprintln(os.Stderr, "Error: inspect deploy requires exactly one <name> or --label/-l")
+		fmt.Fprintln(os.Stderr, "Error: inspect deploy requires exactly one <name> or --label")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -238,18 +238,18 @@ func listDeployPods(env *kube.KubeEnv, ctx context.Context, d *appsv1.Deployment
 
 func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
-	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<deployment-name> | -l <label>]")
+	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<deployment-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow deployment summary and per-pod container state.")
 	fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML document.")
 	switch seen {
 	case "path":
-		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --spec, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  --format composes with --resources/--spec/--az; --path takes only -n/-l.")
+		fmt.Fprintln(w, "  --format composes with --resources/--spec/--az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
-	fmt.Fprint(w, fs.FlagUsages())
+	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
 	fmt.Fprintln(w, "\nExamples:")
 	for _, ex := range deployExamples(seen) {
 		fmt.Fprintln(w, ex)
@@ -261,7 +261,7 @@ func deployExamples(seen string) []string {
 	case "path":
 		return []string{
 			"  kdiag inspect deploy my-deploy --path memory",
-			"  kdiag inspect deploy -l app=my-app --path '*image*'",
+			"  kdiag inspect deploy --label app=my-app --path '*image*'",
 		}
 	case "resources":
 		return []string{
@@ -271,7 +271,7 @@ func deployExamples(seen string) []string {
 	case "spec":
 		return []string{
 			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --format yaml | yq '.containers[].name'",
+			"  kdiag inspect deploy my-deploy --spec --format yaml",
 		}
 	case "az":
 		return []string{
@@ -281,10 +281,7 @@ func deployExamples(seen string) []string {
 	default:
 		return []string{
 			"  kdiag inspect deploy my-deploy",
-			"  kdiag inspect deploy my-deploy --format yaml | yq '.pods | length'",
 			"  kdiag inspect deploy my-deploy --resources --format yaml",
-			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --format yaml | yq '.containers[].name'",
 			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}

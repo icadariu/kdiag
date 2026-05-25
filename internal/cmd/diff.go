@@ -704,18 +704,17 @@ func runDiffReplicaSet(args []string) {
 func printDiffRSHelp(w io.Writer, fs *pflag.FlagSet) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  kdiag diff rs [flags] <deployment-name> [<rev-from> <rev-to>]")
-	fmt.Fprintln(w, "  kdiag diff rs [flags] -l <label> [<rev-from> <rev-to>]")
+	fmt.Fprintln(w, "  kdiag diff rs [flags] --label <selector> [<rev-from> <rev-to>]")
 	fmt.Fprintln(w, "  kdiag diff rs [flags] <rs-name-a> <rs-name-b>     (generic two-name form)")
 	fmt.Fprintln(w, "\nDiff pod template spec between two ReplicaSet revisions of a deployment.")
 	fmt.Fprintln(w, "Without revisions, diffs the previous and current (last two).")
 	fmt.Fprintln(w, "With --full, dumps the full RS objects (managedFields preserved).")
 	fmt.Fprintln(w, "\nFlags:")
-	fmt.Fprint(w, fs.FlagUsages())
+	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
 	fmt.Fprintln(w, "\nExamples:")
-	fmt.Fprintln(w, "  kdiag diff rs -n my-ns my-deployment              # last two revisions")
-	fmt.Fprintln(w, "  kdiag diff rs -n my-ns my-deployment 2 5          # specific revisions")
-	fmt.Fprintln(w, "  kdiag diff rs -n my-ns -l app=my-app 1 3          # via selector")
-	fmt.Fprintln(w, "  kdiag diff rs -n my-ns my-rs-abc my-rs-def        # two RS by name")
+	fmt.Fprintln(w, "  kdiag diff rs --namespace my-ns my-deployment              # last two revisions")
+	fmt.Fprintln(w, "  kdiag diff rs --namespace my-ns my-deployment 2 5 --full   # specific revisions, full objects")
+	fmt.Fprintln(w, "  kdiag diff rs --namespace my-ns --label app=my-app 1 3     # via selector")
 }
 
 // parseDiffRSArgs maps the trailing positionals after `kdiag diff rs` onto
@@ -727,7 +726,7 @@ func printDiffRSHelp(w io.Writer, fs *pflag.FlagSet) {
 func parseDiffRSArgs(rest []string, selector string) (depName string, revFrom, revTo int, hasRevs bool, err error) {
 	switch {
 	case selector == "" && len(rest) == 0:
-		err = fmt.Errorf("diff rs requires <deployment-name>, -l <label>, or two RS names")
+		err = fmt.Errorf("diff rs requires <deployment-name>, --label <selector>, or two RS names")
 	case selector == "" && len(rest) == 1:
 		depName = rest[0]
 	case selector == "" && len(rest) == 3:

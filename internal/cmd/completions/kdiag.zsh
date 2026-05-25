@@ -176,12 +176,23 @@ _kdiag() {
         esac
     done
 
-    local -a top_cmds inspect_kinds diff_kinds completion_shells
+    local -a top_cmds inspect_kinds diff_kinds completion_shells help_topics
     top_cmds=(
-        'inspect:Show container/workload state for pods, deploy, ds, sts, rs, node'
-        'diff:Diff Kubernetes resources (rs, pod, node)'
+        'completion:Generate shell completion (bash|zsh)'
+        'diff:Diff Kubernetes resources (rs, pod, node, …)'
         'events:Show events in the current namespace'
+        'help:Show help for a command or topic (e.g. kdiag help inspect)'
+        'inspect:Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement'
         'sort:Sort resources by creation date (newest last)'
+    )
+    help_topics=(
+        'completion:Help for completion'
+        'diff:Help for diff'
+        'events:Help for events'
+        'inspect:Help for inspect'
+        'sort:Help for sort'
+        'yml-path:--path topic page'
+        'path:alias for yml-path'
     )
     inspect_kinds=(pod deployment daemonset statefulset replicaset node)
     # sort accepts any kind the API server exposes (built-in or CRD); these
@@ -508,6 +519,9 @@ _kdiag() {
                     ;;
                 completion)
                     _arguments "1: :(${completion_shells[*]})"
+                    ;;
+                help)
+                    _describe 'topic' help_topics
                     ;;
             esac
             ;;

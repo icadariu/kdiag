@@ -85,7 +85,8 @@ _kdiag() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     cword=${COMP_CWORD}
 
-    local top_cmds="inspect diff events sort"
+    local top_cmds="completion diff events help inspect sort"
+    local help_topics="completion diff events inspect sort yml-path path"
     local inspect_kinds="pod deployment daemonset statefulset replicaset node"
     # sort accepts any kind the API server exposes (built-in or CRD); these
     # are just suggestions for tab completion.
@@ -246,6 +247,11 @@ _kdiag() {
         completion)
             if [[ ${cword} -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "${completion_shells}" -- "${cur}") )
+            fi
+            ;;
+        help)
+            if [[ ${cword} -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "${help_topics}" -- "${cur}") )
             fi
             ;;
     esac

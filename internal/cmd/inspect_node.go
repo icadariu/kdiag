@@ -50,7 +50,7 @@ func runInspectNode(args []string) {
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
-		fmt.Fprintln(os.Stderr, "Error: provide either <node-name> OR --label/-l (not both)")
+		fmt.Fprintln(os.Stderr, "Error: provide either <node-name> OR --label (not both)")
 		fs.Usage()
 		os.Exit(1)
 	}
@@ -107,22 +107,21 @@ func printNodeBlock(n corev1.Node) {
 
 func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
-	fmt.Fprintln(w, "Usage: kdiag inspect node [<node-name> | -l <label>]")
+	fmt.Fprintln(w, "Usage: kdiag inspect node [<node-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow zone for one node or a set of nodes.")
 	if seen == "path" {
-		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
-	fmt.Fprint(w, fs.FlagUsages())
+	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
 	fmt.Fprintln(w, "\nExamples:")
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "  kdiag inspect node my-node --path zone")
-		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a --path taints")
+		fmt.Fprintln(w, "  kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a --path taints")
 	default:
 		fmt.Fprintln(w, "  kdiag inspect node my-node")
-		fmt.Fprintln(w, "  kdiag inspect node -l topology.kubernetes.io/zone=eu-west-1a")
+		fmt.Fprintln(w, "  kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a")
 		fmt.Fprintln(w, "  kdiag inspect node")
-		fmt.Fprintln(w, "  kdiag inspect node my-node --path zone")
 	}
 }
