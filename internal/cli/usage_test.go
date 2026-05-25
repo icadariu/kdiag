@@ -45,12 +45,16 @@ func TestRootCommands_AlphabeticalAndComplete(t *testing.T) {
 }
 
 // commandsInOrder reports whether s mentions every command in rootCommands
-// strictly in the canonical (alphabetical) sequence — used by all three
-// root-screen tests to guard against insertion-order regressions.
-func commandsInOrder(t *testing.T, s string) {
+// strictly in the canonical (alphabetical) sequence. includeMeta mirrors the
+// flag passed to printCommandList — when false, completion/help are skipped
+// because they're hidden from the bare-banner screen.
+func commandsInOrder(t *testing.T, s string, includeMeta bool) {
 	t.Helper()
 	idx := 0
 	for _, c := range rootCommands {
+		if !includeMeta && c.Meta {
+			continue
+		}
 		off := strings.Index(s[idx:], c.Name)
 		if off < 0 {
 			t.Errorf("output missing command %q (or out of order) — saw:\n%s", c.Name, s)
@@ -76,12 +80,15 @@ func TestPrintRootBanner_HasUsageAndCommandList(t *testing.T) {
 			t.Errorf("PrintRootBanner missing %q:\n%s", want, out)
 		}
 	}
-	commandsInOrder(t, out)
-	// The bare banner should be terse — no branded title and no flags-vary
-	// pointer (that belongs in --help).
+	commandsInOrder(t, out, false)
+	// The bare banner should be terse — no branded title, no flags-vary
+	// pointer (that belongs in --help), and no meta commands (completion,
+	// help) which are reserved for the full --help screen.
 	for _, banned := range []string{
 		"kdiag — Kubernetes diagnostic CLI",
 		"Flags vary by command",
+		"completion",
+		"help",
 	} {
 		if strings.Contains(out, banned) {
 			t.Errorf("PrintRootBanner should not contain %q:\n%s", banned, out)
@@ -108,7 +115,7 @@ func TestPrintRootUsage_FullHelp(t *testing.T) {
 			t.Errorf("PrintRootUsage missing %q:\n%s", want, out)
 		}
 	}
-	commandsInOrder(t, out)
+	commandsInOrder(t, out, true)
 	// `version` is no longer a subcommand — must not appear in --help.
 	if strings.Contains(out, "version") {
 		t.Errorf("PrintRootUsage should not contain 'version' (flag, not subcommand):\n%s", out)
@@ -125,7 +132,7 @@ func TestPrintRootHelp_OnlyCommandList(t *testing.T) {
 	if !strings.Contains(out, "Available Commands:") {
 		t.Errorf("PrintRootHelp missing 'Available Commands:':\n%s", out)
 	}
-	commandsInOrder(t, out)
+	commandsInOrder(t, out, true)
 	for _, banned := range []string{
 		"kdiag — Kubernetes diagnostic CLI",
 		"Usage:",

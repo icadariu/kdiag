@@ -5,11 +5,14 @@ and availability-zone distribution.
 
 Help is nested kubectl-style:
 
-- `kdiag` (no args) prints a Usage line plus the sorted Available Commands list.
-- `kdiag --help` (or `-h`) adds the branded title and a pointer explaining
-  that flags vary per command.
+- `kdiag` (no args) prints a Usage line plus the sorted Available Commands
+  list, scoped to the primary commands (`completion` and `help` are hidden
+  to keep the bare banner focused).
+- `kdiag --help` (or `-h`) adds the branded title, a pointer explaining
+  that flags vary per command, and includes every command (`completion`
+  and `help` reappear here).
 - `kdiag help` (no topic) prints just the Available Commands list — terse,
-  scriptable.
+  scriptable; same full set as `--help`.
 - `kdiag help <command>` is equivalent to `kdiag <command> --help` (byte-for-byte
   identical output); long-form topics live under `kdiag help <topic>`
   (e.g. `kdiag help yml-path` for the `--path` flag).
