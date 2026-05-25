@@ -2,8 +2,8 @@ package cmd
 
 import "testing"
 
-func TestExtractYMLPathArgs_HappyPath(t *testing.T) {
-	needle, name, selector, ns, ok := extractYMLPathArgs([]string{"--yml-path", "memory", "my-deploy"})
+func TestExtractPathArgs_HappyPath(t *testing.T) {
+	needle, name, selector, ns, ok := extractPathArgs([]string{"--path", "memory", "my-deploy"})
 	if !ok {
 		t.Fatal("ok=false, want true")
 	}
@@ -12,22 +12,22 @@ func TestExtractYMLPathArgs_HappyPath(t *testing.T) {
 	}
 }
 
-func TestExtractYMLPathArgs_EqualsForm(t *testing.T) {
-	needle, _, _, _, ok := extractYMLPathArgs([]string{"--yml-path=memory", "my-deploy"})
+func TestExtractPathArgs_EqualsForm(t *testing.T) {
+	needle, _, _, _, ok := extractPathArgs([]string{"--path=memory", "my-deploy"})
 	if !ok || needle != "memory" {
 		t.Errorf("got needle=%q ok=%v", needle, ok)
 	}
 }
 
-func TestExtractYMLPathArgs_Absent(t *testing.T) {
-	_, _, _, _, ok := extractYMLPathArgs([]string{"my-deploy"})
+func TestExtractPathArgs_Absent(t *testing.T) {
+	_, _, _, _, ok := extractPathArgs([]string{"my-deploy"})
 	if ok {
 		t.Error("ok=true, want false")
 	}
 }
 
-func TestExtractYMLPathArgs_WithLabel(t *testing.T) {
-	_, _, selector, _, ok := extractYMLPathArgs([]string{"--yml-path", "memory", "-l", "app=foo"})
+func TestExtractPathArgs_WithLabel(t *testing.T) {
+	_, _, selector, _, ok := extractPathArgs([]string{"--path", "memory", "-l", "app=foo"})
 	if !ok || selector != "app=foo" {
 		t.Errorf("got selector=%q ok=%v", selector, ok)
 	}

@@ -190,10 +190,10 @@ func TestInspectPod_Resources_Text(t *testing.T) {
 	}
 }
 
-// `inspect pod --resources --yaml` emits a YAML list of {name, resources} per
+// `inspect pod --resources --format yaml` emits a YAML list of {name, resources} per
 // container.
 func TestInspectPod_Resources_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--resources", "--yaml", "-n", "kdiag-test", "kdiag-static")
+	out, _, code := run("inspect", "pod", "--resources", "--format", "yaml", "-n", "kdiag-test", "kdiag-static")
 	if code != 0 {
 		t.Fatalf("exit=%d, out=%s", code, out)
 	}
@@ -209,10 +209,10 @@ func TestInspectPod_Resources_YAML(t *testing.T) {
 	}
 }
 
-// `inspect pod --resources --yaml -l <label>` emits a YAML list of containers
+// `inspect pod --resources --format yaml -l <label>` emits a YAML list of containers
 // from matching pods.
 func TestInspectPod_Resources_LabelList_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--resources", "--yaml", "-n", "kdiag-test", "-l", "app=test-app")
+	out, _, code := run("inspect", "pod", "--resources", "--format", "yaml", "-n", "kdiag-test", "-l", "app=test-app")
 	if code != 0 {
 		t.Fatalf("exit=%d, out=%s", code, out)
 	}
@@ -226,12 +226,12 @@ func TestInspectPod_Resources_LabelList_YAML(t *testing.T) {
 	}
 }
 
-// --az + --yaml emits the AZ view as a YAML doc { placements, zoneSummary }.
-// --yaml is a format flag and composes with any view selector.
+// --az + --format yaml emits the AZ view as a YAML doc { placements, zoneSummary }.
+// --format yaml is a format flag and composes with any view selector.
 func TestInspectPod_AZ_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--az", "--yaml", "-n", "kdiag-test", "kdiag-static")
+	out, _, code := run("inspect", "pod", "--az", "--format", "yaml", "-n", "kdiag-test", "kdiag-static")
 	if code != 0 {
-		t.Fatalf("expected exit 0 for --az --yaml, got %d\nstdout: %s", code, out)
+		t.Fatalf("expected exit 0 for --az --format yaml, got %d\nstdout: %s", code, out)
 	}
 	var doc struct {
 		Placements []struct {
@@ -295,7 +295,7 @@ func TestInspectPod_MultiContainer_TextLabels(t *testing.T) {
 }
 
 func TestInspectPod_MultiContainer_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-multi-container", "--yaml", "-n", "kdiag-test")
+	out, _, code := run("inspect", "pod", "kdiag-multi-container", "--format", "yaml", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("exit=%d, out=%s", code, out)
 	}
@@ -321,7 +321,7 @@ func TestInspectPod_MultiContainer_YAML(t *testing.T) {
 }
 
 func TestInspectPod_LabelMatch_YAML_IsList(t *testing.T) {
-	out, _, code := run("inspect", "pod", "-l", "app=test-app", "--yaml", "-n", "kdiag-test")
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "--format", "yaml", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("exit=%d, out=%s", code, out)
 	}
@@ -335,7 +335,7 @@ func TestInspectPod_LabelMatch_YAML_IsList(t *testing.T) {
 }
 
 func TestInspectDeploy_YAML_WorkloadShape(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "test-app", "--yaml", "-n", "kdiag-test")
+	out, _, code := run("inspect", "deploy", "test-app", "--format", "yaml", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("exit=%d, out=%s", code, out)
 	}
@@ -479,9 +479,9 @@ func TestInspect_SpecOnNonDeploy_Errors(t *testing.T) {
 // ── inspect flag-combination matrix ─────────────────────────────────────────
 //
 // Sweeps every pair of flags advertised by `kdiag inspect --help`. The model:
-//   - View selectors (mutex): --resources, --spec, --az, --yml-path.
+//   - View selectors (mutex): --resources, --spec, --az, --path.
 //     Default (no flag) is its own view.
-//   - Format flag (orthogonal): --yaml.
+//   - Format flag (orthogonal): --format yaml.
 //
 // Every compose-pair must exit 0; every mutex-pair must exit non-zero with a
 // recognisable error. If a row here is wrong, --help is lying to the user —
@@ -497,12 +497,12 @@ func TestInspectPod_FlagMatrix(t *testing.T) {
 	}
 	base := []string{"inspect", "pod", "kdiag-static", "-n", "kdiag-test"}
 	rows := []row{
-		{"resources+yaml composes", append(base, "--resources", "--yaml"), true, ""},
-		{"az+yaml composes", append(base, "--az", "--yaml"), true, ""},
+		{"resources+yaml composes", append(base, "--resources", "--format", "yaml"), true, ""},
+		{"az+yaml composes", append(base, "--az", "--format", "yaml"), true, ""},
 		{"resources+az is mutex", append(base, "--resources", "--az"), false, "mutually exclusive"},
-		{"yml-path rejects --yaml alongside", append(base, "--yml-path", "name", "--yaml"), false, "mutually exclusive"},
-		{"yml-path rejects --az alongside", append(base, "--yml-path", "name", "--az"), false, "mutually exclusive"},
-		{"yml-path rejects --resources alongside", append(base, "--yml-path", "name", "--resources"), false, "mutually exclusive"},
+		{"yml-path rejects --format yaml alongside", append(base, "--path", "name", "--format", "yaml"), false, "mutually exclusive"},
+		{"yml-path rejects --az alongside", append(base, "--path", "name", "--az"), false, "mutually exclusive"},
+		{"yml-path rejects --resources alongside", append(base, "--path", "name", "--resources"), false, "mutually exclusive"},
 	}
 	for _, r := range rows {
 		t.Run(r.name, func(t *testing.T) {
@@ -520,10 +520,10 @@ func TestInspectPod_FlagMatrix(t *testing.T) {
 	}
 }
 
-// The pod subcommand's help text is dispatcher-adjacent: --yml-path is
+// The pod subcommand's help text is dispatcher-adjacent: --path is
 // registered on the parent `inspect` command, so `fs.FlagUsages()` inside
 // `printInspectPodHelp` cannot list it. The prose around the Flags block is
-// the only place users learn that --yml-path exists and that --yaml does
+// the only place users learn that --path exists and that --format yaml does
 // not compose with it. This test locks that prose down so it cannot drift
 // out of sync with the dispatcher's actual rejection behaviour pinned in
 // TestInspectPod_FlagMatrix above.
@@ -532,15 +532,15 @@ func TestInspectPod_HelpMentionsYMLPath(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0 for -h, got %d\nstderr: %s", code, out)
 	}
-	if !strings.Contains(out, "--yml-path") {
-		t.Errorf("expected `--yml-path` to be mentioned in inspect pod help:\n%s", out)
+	if !strings.Contains(out, "--path") {
+		t.Errorf("expected `--path` to be mentioned in inspect pod help:\n%s", out)
 	}
-	// The old wording promised universal composition with --yaml, but
-	// --yml-path rejects --yaml. Either claim must qualify the exception
+	// The old wording promised universal composition with --format yaml, but
+	// --path rejects --format yaml. Either claim must qualify the exception
 	// or be removed; the unqualified sentence is what we forbid.
-	bad := "--yaml is a format flag and composes with any view."
+	bad := "--format yaml is a format flag and composes with any view."
 	if strings.Contains(out, bad) {
-		t.Errorf("help still contains misleading sentence %q — it contradicts the --yml-path rejection:\n%s", bad, out)
+		t.Errorf("help still contains misleading sentence %q — it contradicts the --path rejection:\n%s", bad, out)
 	}
 }
 
@@ -549,7 +549,7 @@ func TestInspectPod_HelpMentionsYMLPath(t *testing.T) {
 // tests lock them in so a future refactor of the dispatch switch cannot
 // silently drop a list-output mode.
 func TestInspectPod_LabelSelectorYAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--yaml")
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--format", "yaml")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -565,7 +565,7 @@ func TestInspectPod_LabelSelectorYAML(t *testing.T) {
 }
 
 func TestInspectPod_LabelSelectorResourcesYAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--resources", "--yaml")
+	out, _, code := run("inspect", "pod", "-l", "app=test-app", "-n", "kdiag-test", "--resources", "--format", "yaml")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -583,20 +583,6 @@ func TestInspectPod_LabelSelectorResourcesText(t *testing.T) {
 	// Multi-pod text mode prints a `==========` separator between pods.
 	if !strings.Contains(out, "==========") {
 		t.Errorf("expected `==========` separator between pods, got:\n%s", out)
-	}
-}
-
-// `--yml` is normalised to `--yaml` at the flag-parser level. If the
-// normaliser breaks, the help would still pass but the alias would silently
-// be treated as an unknown long flag.
-func TestInspectPod_YmlAlias(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
-	}
-	// `name: kdiag-static` is the canonical first line of the YAML emission.
-	if !strings.Contains(out, "name: kdiag-static") {
-		t.Errorf("expected YAML emission for --yml alias, got:\n%s", out)
 	}
 }
 
@@ -659,9 +645,9 @@ func TestInspectDeploy_FlagMatrix(t *testing.T) {
 	}
 	base := []string{"inspect", "deploy", "test-app", "-n", "kdiag-test"}
 	rows := []row{
-		{"resources+yaml composes", append(base, "--resources", "--yaml"), true, ""},
-		{"spec+yaml composes", append(base, "--spec", "--yaml"), true, ""},
-		{"az+yaml composes", append(base, "--az", "--yaml"), true, ""},
+		{"resources+yaml composes", append(base, "--resources", "--format", "yaml"), true, ""},
+		{"spec+yaml composes", append(base, "--spec", "--format", "yaml"), true, ""},
+		{"az+yaml composes", append(base, "--az", "--format", "yaml"), true, ""},
 		{"resources+spec is mutex", append(base, "--resources", "--spec"), false, "mutually exclusive"},
 		{"resources+az is mutex", append(base, "--resources", "--az"), false, "mutually exclusive"},
 		{"spec+az is mutex", append(base, "--spec", "--az"), false, "mutually exclusive"},
@@ -756,11 +742,11 @@ func TestInspectDeploy_LabelMultiMatch_Error(t *testing.T) {
 	}
 }
 
-// `inspect deploy --resources --yaml` emits a flat list of {name, kind, resources}
+// `inspect deploy --resources --format yaml` emits a flat list of {name, kind, resources}
 // across all pods belonging to the deployment. Should NOT iterate pods or show "Pod:" /
 // "Container:" headers from the text mode.
 func TestInspectDeploy_Resources_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--resources", "--yaml", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--resources", "--format", "yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -776,12 +762,12 @@ func TestInspectDeploy_Resources_YAML(t *testing.T) {
 	}
 }
 
-// `inspect deploy --spec --yaml` emits .spec.template.spec as YAML. Keys are
+// `inspect deploy --spec --format yaml` emits .spec.template.spec as YAML. Keys are
 // alphabetized by sigs.k8s.io/yaml (JSON marshalling), so "image" precedes
 // "name" inside each container entry — assert the keys separately, not as
 // a sequence-marker line.
 func TestInspectDeploy_Spec_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--spec", "--yaml", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--spec", "--format", "yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -792,11 +778,11 @@ func TestInspectDeploy_Spec_YAML(t *testing.T) {
 	}
 }
 
-// --az + --yaml emits the AZ view as a YAML doc on a deployment too.
+// --az + --format yaml emits the AZ view as a YAML doc on a deployment too.
 func TestInspectDeploy_AZ_YAML(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "--az", "--yaml", "-n", "kdiag-test", "test-app")
+	out, _, code := run("inspect", "deploy", "--az", "--format", "yaml", "-n", "kdiag-test", "test-app")
 	if code != 0 {
-		t.Fatalf("expected exit 0 for --az --yaml on deploy, got %d\nstdout: %s", code, out)
+		t.Fatalf("expected exit 0 for --az --format yaml on deploy, got %d\nstdout: %s", code, out)
 	}
 	if !strings.Contains(out, "placements:") || !strings.Contains(out, "zoneSummary:") {
 		t.Errorf("expected `placements:` and `zoneSummary:` in YAML output:\n%s", out)
@@ -1843,12 +1829,13 @@ func TestNestedHelp(t *testing.T) {
 			excludes: []string{"kdiag — Kubernetes diagnostic CLI"},
 		},
 		{
-			// Same guard for the no-args path.
+			// Bare `kdiag` prints only the banner + pointer — no command
+			// list. The command list belongs to `kdiag -h` / `kdiag help`.
 			name:     "no args",
 			args:     []string{},
 			wantCode: 1,
-			contains: []string{"Available Commands:", "Usage:"},
-			excludes: []string{"kdiag — Kubernetes diagnostic CLI"},
+			contains: []string{"kdiag — Kubernetes diagnostic CLI", "Usage:", `kdiag -h`},
+			excludes: []string{"Available Commands:", "inspect ", "diff "},
 		},
 		{
 			name:     "inspect -h",
@@ -1896,14 +1883,14 @@ func TestNestedHelp(t *testing.T) {
 			name:     "inspect pod --help",
 			args:     []string{"inspect", "pod", "--help"},
 			wantCode: 0,
-			contains: []string{"--label", "--namespace", "--resources", "--yaml", "Examples:"},
+			contains: []string{"--label", "--namespace", "--resources", "--format", "Examples:"},
 		},
 		{
 			name:     "inspect deploy -h",
 			args:     []string{"inspect", "deploy", "-h"},
 			wantCode: 0,
-			// YAML-mode flags must be advertised in deploy help.
-			contains: []string{"--namespace", "--resources", "--spec", "--yaml", "Examples:"},
+			// Format flag must be advertised in deploy help.
+			contains: []string{"--namespace", "--resources", "--spec", "--format", "Examples:"},
 		},
 		{
 			name:     "inspect node -h",
@@ -2122,16 +2109,16 @@ func TestCompletion_MissingShell(t *testing.T) {
 
 // ── help filtering for view-aware modes ───────────────────────────────────────
 
-// View-aware help: passing --yml-path to -h hides --yaml/--resources/--az.
-func TestInspectPod_HelpFiltered_YMLPath(t *testing.T) {
-	out, _, code := run("inspect", "pod", "--yml-path", "memory", "-h")
+// View-aware help: passing --path to -h hides --format/--resources/--az.
+func TestInspectPod_HelpFiltered_Path(t *testing.T) {
+	out, _, code := run("inspect", "pod", "--path", "memory", "-h")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
 	}
-	if !strings.Contains(out, "--yml-path") {
-		t.Errorf("help missing --yml-path:\n%s", out)
+	if !strings.Contains(out, "--path") {
+		t.Errorf("help missing --path:\n%s", out)
 	}
-	for _, flag := range []string{"--yaml", "--resources", "--az"} {
+	for _, flag := range []string{"--format", "--resources", "--az"} {
 		if strings.Contains(out, flag) {
 			t.Errorf("help unexpectedly contains %q:\n%s", flag, out)
 		}
@@ -2143,17 +2130,17 @@ func TestInspectPod_HelpUnfiltered(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
 	}
-	for _, flag := range []string{"--yml-path", "--yaml", "--resources", "--az"} {
+	for _, flag := range []string{"--path", "--format", "--resources", "--az"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("help missing %q:\n%s", flag, out)
 		}
 	}
 }
 
-// ── inspect --yml-path ──────────────────────────────────────────────────────
+// ── inspect --path ──────────────────────────────────────────────────────
 
 func TestInspect_YMLPath_DeploymentMemory(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--yml-path", "memory")
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--path", "memory")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
 	}
@@ -2188,7 +2175,7 @@ func TestInspect_YMLPath_PipeIntoYQ(t *testing.T) {
 	if _, err := exec.LookPath("kubectl"); err != nil {
 		t.Skip("kubectl not installed in PATH; skipping pipeline test")
 	}
-	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--yml-path", "memory")
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--path", "memory")
 	if code != 0 {
 		t.Fatalf("kdiag exit %d:\n%s", code, out)
 	}
@@ -2217,7 +2204,7 @@ func TestInspect_YMLPath_PipeIntoYQ(t *testing.T) {
 }
 
 func TestInspect_YMLPath_Selector(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "-n", "kdiag-test", "-l", "app=kdiag-multicont", "--yml-path", "memory")
+	out, _, code := run("inspect", "deploy", "-n", "kdiag-test", "-l", "app=kdiag-multicont", "--path", "memory")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
 	}
@@ -2230,12 +2217,12 @@ func TestInspect_YMLPath_Selector(t *testing.T) {
 }
 
 func TestInspect_YMLPath_ConflictWithYAML(t *testing.T) {
-	out, errOut, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--yml-path", "memory", "--yaml")
+	out, errOut, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--path", "memory", "--format", "yaml")
 	if code == 0 {
 		t.Fatalf("expected non-zero exit:\n%s", out)
 	}
 	combined := out + errOut
-	if !strings.Contains(combined, "--yml-path") || !strings.Contains(combined, "--yaml") {
+	if !strings.Contains(combined, "--path") || !strings.Contains(combined, "--format") {
 		t.Errorf("conflict error should name both flags:\n%s", combined)
 	}
 }
@@ -2252,7 +2239,7 @@ func TestInspect_YMLPath_FindPathRemoved(t *testing.T) {
 
 func TestInspect_YMLPath_ClusterScopedNode(t *testing.T) {
 	// kind clusters set kubernetes.io/hostname on every node; case-sensitive needle.
-	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--yml-path", "*hostname*")
+	out, _, code := run("inspect", "node", "-l", "kubernetes.io/hostname", "--path", "*hostname*")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
@@ -2264,7 +2251,7 @@ func TestInspect_YMLPath_ClusterScopedNode(t *testing.T) {
 }
 
 func TestInspect_YMLPath_NoMatchExitsZero(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml-path", "ZZZ-no-such-string-ZZZ")
+	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--path", "ZZZ-no-such-string-ZZZ")
 	if code != 0 {
 		t.Fatalf("expected exit 0 with no matches, got %d", code)
 	}
@@ -2274,19 +2261,19 @@ func TestInspect_YMLPath_NoMatchExitsZero(t *testing.T) {
 }
 
 func TestInspect_YMLPath_MissingTarget(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--yml-path", "qos")
+	_, errOut, code := run("inspect", "pod", "-n", "kdiag-test", "--path", "qos")
 	if code == 0 {
 		t.Error("expected non-zero exit when neither name nor selector is given")
 	}
-	if !strings.Contains(errOut, "--yml-path") {
-		t.Errorf("expected `--yml-path` in error stderr:\n%s", errOut)
+	if !strings.Contains(errOut, "--path") {
+		t.Errorf("expected `--path` in error stderr:\n%s", errOut)
 	}
 }
 
 func TestInspect_YMLPath_EmptyValueErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml-path=")
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--path=")
 	if code == 0 {
-		t.Error("expected non-zero exit for empty --yml-path value")
+		t.Error("expected non-zero exit for empty --path value")
 	}
 	if !strings.Contains(errOut, "non-empty") {
 		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
@@ -2294,9 +2281,9 @@ func TestInspect_YMLPath_EmptyValueErrors(t *testing.T) {
 }
 
 func TestInspect_YMLPath_WhitespaceNeedleErrors(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml-path", "   ")
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--path", "   ")
 	if code == 0 {
-		t.Error("expected non-zero exit for whitespace-only --yml-path value")
+		t.Error("expected non-zero exit for whitespace-only --path value")
 	}
 	if !strings.Contains(errOut, "non-empty") {
 		t.Errorf("expected `non-empty` in error stderr:\n%s", errOut)
@@ -2307,12 +2294,123 @@ func TestInspect_YMLPath_CRD(t *testing.T) {
 	// CRD coverage: dynamic client resolves the kind and walks unstructured.
 	// Output dropped the ": <value>" suffix in the redesign, so we only
 	// assert the path is present.
-	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--yml-path", "renewBefore")
+	out, _, code := run("inspect", "widgets.kdiag.test", "kdiag-widget", "-n", "kdiag-test", "--path", "renewBefore")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
 	}
 	if !strings.Contains(out, ".spec.renewBefore") {
 		t.Errorf("expected `.spec.renewBefore` in CRD output:\n%s", out)
+	}
+}
+
+// ── help dispatch & banner ────────────────────────────────────────────────────
+
+// `kdiag` (no args) must print only the banner + pointer — no command list.
+// Errors stay terse; the command list is reserved for `kdiag -h`.
+func TestRoot_BareInvocationHidesCommandList(t *testing.T) {
+	out, errOut, code := run()
+	if code == 0 {
+		t.Error("expected non-zero exit for bare `kdiag`")
+	}
+	combined := out + errOut
+	if !strings.Contains(combined, "kdiag — Kubernetes diagnostic CLI") {
+		t.Errorf("expected banner line in output:\n%s", combined)
+	}
+	if !strings.Contains(combined, `kdiag -h`) {
+		t.Errorf("expected hint to `kdiag -h`:\n%s", combined)
+	}
+	for _, banned := range []string{"Available Commands", "inspect ", "diff ", "events ", "sort "} {
+		if strings.Contains(combined, banned) {
+			t.Errorf("bare invocation should not enumerate %q:\n%s", banned, combined)
+		}
+	}
+}
+
+// `kdiag -h` keeps the command list (regression guard for the change above).
+func TestRoot_DashHListsCommands(t *testing.T) {
+	out, _, code := run("-h")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	for _, want := range []string{"inspect", "diff", "events", "sort", "Available Commands"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in `kdiag -h` output:\n%s", want, out)
+		}
+	}
+}
+
+// `kdiag help <cmd>` is a git-style alias for `kdiag <cmd> -h`. Spot-check
+// each subcommand so a future dispatch refactor can't silently drop one.
+func TestHelp_DispatchesPerCommand(t *testing.T) {
+	cases := []struct {
+		topic string
+		want  string
+	}{
+		{"inspect", "Available Subcommands"},
+		{"diff", "Diff two Kubernetes resources"},
+		{"events", "Show events"},
+		{"sort", "Sort resources by creation date"},
+		{"completion", "Generate a shell completion script"},
+	}
+	for _, c := range cases {
+		t.Run(c.topic, func(t *testing.T) {
+			out, _, code := run("help", c.topic)
+			if code != 0 {
+				t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+			}
+			if !strings.Contains(out, c.want) {
+				t.Errorf("expected %q in `kdiag help %s` output:\n%s", c.want, c.topic, out)
+			}
+		})
+	}
+}
+
+// `kdiag help inspect pod` must route to the same printer as `inspect pod -h`.
+func TestHelp_NestedSubcommand(t *testing.T) {
+	viaHelp, _, code := run("help", "inspect", "pod")
+	if code != 0 {
+		t.Fatalf("help: expected exit 0, got %d:\n%s", code, viaHelp)
+	}
+	viaDash, _, code := run("inspect", "pod", "-h")
+	if code != 0 {
+		t.Fatalf("dash: expected exit 0, got %d:\n%s", code, viaDash)
+	}
+	if viaHelp != viaDash {
+		t.Errorf("`kdiag help inspect pod` differs from `kdiag inspect pod -h`:\n--help--\n%s\n--dash--\n%s",
+			viaHelp, viaDash)
+	}
+}
+
+// `kdiag help yml-path` prints the topic page (legacy name preserved even
+// though the flag is `--path`). `kdiag help path` is accepted too.
+func TestHelp_YMLPathTopic(t *testing.T) {
+	for _, alias := range []string{"yml-path", "path"} {
+		t.Run(alias, func(t *testing.T) {
+			out, _, code := run("help", alias)
+			if code != 0 {
+				t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+			}
+			for _, want := range []string{
+				"--path <needle>",
+				"Walk the resource YAML",
+				"Smart-case",
+				"Examples:",
+			} {
+				if !strings.Contains(out, want) {
+					t.Errorf("expected %q in topic output:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+func TestHelp_UnknownTopicErrors(t *testing.T) {
+	_, errOut, code := run("help", "bogus-topic")
+	if code == 0 {
+		t.Error("expected non-zero exit for unknown help topic")
+	}
+	if !strings.Contains(errOut, "unknown help topic") {
+		t.Errorf("expected `unknown help topic` in stderr:\n%s", errOut)
 	}
 }
 

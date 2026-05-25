@@ -19,6 +19,20 @@ func WantsHelp(args []string) bool {
 	return false
 }
 
+// PrintRootBanner prints the terse banner shown when the user runs `kdiag`
+// with no arguments. Deliberately minimal — no command list — so the bare
+// invocation doesn't impersonate the help screen. `kdiag -h` remains the
+// place to discover commands.
+func PrintRootBanner(w io.Writer) {
+	fmt.Fprint(w, `kdiag — Kubernetes diagnostic CLI
+
+Usage:
+  kdiag <command> [flags] [args]
+
+Use "kdiag -h" for the command list.
+`)
+}
+
 // PrintRootUsage prints the top-level help for kdiag. Single-subcommand groups
 // (az, rs) are collapsed onto one line so users see the actual entry point
 // rather than a two-step tree. Kinds for `inspect` are summarized in the
@@ -26,10 +40,9 @@ func WantsHelp(args []string) bool {
 //
 // `full` selects the help screen (true) vs. the error-fallback screen
 // (false). The branded title line and the auxiliary `completion` command
-// appear only on the help screen; the error paths (no args, unknown
-// command) stay terse and just show the command list + usage hint.
-// `--version` is a flag, not a subcommand, so it does not appear in
-// either mode.
+// appear only on the help screen; the error paths (unknown command) stay
+// terse and just show the command list + usage hint. `--version` is a
+// flag, not a subcommand, so it does not appear in either mode.
 func PrintRootUsage(w io.Writer, full bool) {
 	if full {
 		fmt.Fprint(w, "kdiag — Kubernetes diagnostic CLI\n\n")
@@ -42,13 +55,14 @@ func PrintRootUsage(w io.Writer, full bool) {
 `)
 	if full {
 		fmt.Fprint(w, `  completion   Generate shell completion (bash|zsh)
+  help         Show help for a command or topic (e.g. kdiag help inspect)
 `)
 	}
 	fmt.Fprint(w, `
 Usage:
   kdiag <command> [flags] [args]
 
-Use "kdiag <command> -h" for more information about a command.
+Use "kdiag <command> -h" (or "kdiag help <command>") for more information about a command.
 `)
 }
 
@@ -71,17 +85,11 @@ Options:
   -l, --label            Label selector (pod, deploy, node)
   <partial-name>         Partial pod name match (pod only)
 `)
-	if showYAML(seen) {
-		fmt.Fprintln(w, "  --yaml                 Emit a single yq-safe YAML document instead of text")
+	if showFormat(seen) {
+		fmt.Fprintln(w, "  --format <text|yaml>   Output format (default: text)")
 	}
-	if showYMLPath(seen) {
-		fmt.Fprint(w, `  --yml-path <needle>    Walk the resource YAML and print every yq path whose
-                         key or value matches <needle>. Works for any kind including CRDs.
-                         Default match is exact (full key or full value); use '*' as a
-                         glob ('name*', '*name', '*name*') for prefix/suffix/substring.
-                         Smart-case: lowercase needle is case-insensitive; uppercase
-                         makes it case-sensitive. Compatible with --label.
-`)
+	if showPath(seen) {
+		fmt.Fprintln(w, "  --path <needle>        Only print yq paths matching <needle> (kdiag help yml-path for details)")
 	}
 	if showResources(seen) {
 		fmt.Fprintln(w, "  --resources            Narrow output to container resources (text or YAML)")
@@ -91,8 +99,8 @@ Options:
 	}
 	if showAZ(seen) {
 		fmt.Fprint(w, `  --az                   Availability-zone placement (pod, deploy, ds, sts).
-                         Composes with --yaml; mutually exclusive with
-                         --resources / --spec / --yml-path (each selects a view).
+                         Composes with --format yaml; mutually exclusive with
+                         --resources / --spec / --path (each selects a view).
 `)
 	}
 	fmt.Fprintln(w)
@@ -106,50 +114,78 @@ Options:
 
 // Composition rules for view selectors:
 //   none seen   → show everything
-//   yml-path    → show only -n, -l, --yml-path
-//   resources   → show --resources, --yaml, --az; hide --yml-path, --spec
-//   spec        → show --spec, --yaml; hide --yml-path, --resources, --az
-//   az          → show --az, --yaml; hide --yml-path, --resources, --spec
-func showYMLPath(seen string) bool   { return seen == "" || seen == "yml-path" }
-func showYAML(seen string) bool      { return seen != "yml-path" }
+//   path        → show only -n, -l, --path
+//   resources   → show --resources, --format, --az; hide --path, --spec
+//   spec        → show --spec, --format; hide --path, --resources, --az
+//   az          → show --az, --format; hide --path, --resources, --spec
+func showPath(seen string) bool      { return seen == "" || seen == "path" }
+func showFormat(seen string) bool    { return seen != "path" }
 func showResources(seen string) bool { return seen == "" || seen == "resources" }
 func showSpec(seen string) bool      { return seen == "" || seen == "spec" }
 func showAZ(seen string) bool        { return seen == "" || seen == "az" || seen == "resources" }
 
 func inspectExamples(seen string) []string {
 	switch seen {
-	case "yml-path":
+	case "path":
 		return []string{
-			"  kdiag inspect pod my-pod --yml-path qosClass",
-			"  kdiag inspect deploy my-deploy --yml-path '*image*'",
-			"  kdiag inspect deploy -l app=my-app --yml-path memory",
+			"  kdiag inspect pod my-pod --path qosClass",
+			"  kdiag inspect deploy my-deploy --path '*image*'",
+			"  kdiag inspect deploy -l app=my-app --path memory",
 		}
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect pod my-pod --resources --yaml",
+			"  kdiag inspect pod my-pod --resources --format yaml",
 			"  kdiag inspect deploy my-deploy --resources",
 		}
 	case "spec":
 		return []string{
 			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --yaml",
+			"  kdiag inspect deploy my-deploy --spec --format yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect pod --az -n my-ns -l app=my-app",
-			"  kdiag inspect deploy my-deploy --az --yaml",
+			"  kdiag inspect deploy my-deploy --az --format yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect pod my-pod --yaml | yq '.containers[].name'",
+			"  kdiag inspect pod my-pod --format yaml | yq '.containers[].name'",
 			"  kdiag inspect deploy my-deploy",
-			"  kdiag inspect deploy my-deploy --resources --yaml",
+			"  kdiag inspect deploy my-deploy --resources --format yaml",
 			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --yml-path memory",
+			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}
+}
+
+// PrintYMLPathTopic prints the long-form explanation of `--path`. Reachable
+// via `kdiag help yml-path`. The topic keeps the legacy name "yml-path"
+// even though the flag itself is now `--path` — both are accepted as topic
+// aliases by the help dispatcher.
+func PrintYMLPathTopic(w io.Writer) {
+	fmt.Fprint(w, `kdiag inspect --path <needle>
+
+Walk the resource YAML and print every yq path whose key or value matches
+<needle>. Works for any kind including CRDs.
+
+Matching:
+  Default match is exact (full key or full value).
+  Use '*' as a glob: 'name*' (prefix), '*name' (suffix), '*name*' (substring).
+  Smart-case: lowercase needle is case-insensitive; uppercase makes it case-sensitive.
+
+Compatibility:
+  --path composes with -n/--namespace and -l/--label.
+  --path is mutually exclusive with --format, --resources, --spec, --az
+  (each selects a different view).
+
+Examples:
+  kdiag inspect pod my-pod --path qosClass
+  kdiag inspect deploy my-deploy --path '*image*'
+  kdiag inspect deploy -l app=my-app --path memory
+  kdiag inspect node -l kubernetes.io/hostname --path '*hostname*'
+`)
 }
 
 // PrintDiffUsage prints the full generic help for `kdiag diff` (with no kind specified).
@@ -286,15 +322,15 @@ Use "kdiag events -h" for flags.
 }
 
 // ViewFlagSeen scans args for the first view-selector flag and returns its
-// short name ("yml-path", "resources", "spec", "az") or "" if none is
-// present. Accepts both the space-separated form (--yml-path x) and the
-// inline form (--yml-path=x). Used by help printers and the completion
-// scripts (transitively) to filter what gets suggested once a view is set.
+// short name ("path", "resources", "spec", "az") or "" if none is present.
+// Accepts both the space-separated form (--path x) and the inline form
+// (--path=x). Used by help printers and the completion scripts (transitively)
+// to filter what gets suggested once a view is set.
 func ViewFlagSeen(args []string) string {
 	for _, a := range args {
 		switch {
-		case a == "--yml-path" || strings.HasPrefix(a, "--yml-path="):
-			return "yml-path"
+		case a == "--path" || strings.HasPrefix(a, "--path="):
+			return "path"
 		case a == "--resources":
 			return "resources"
 		case a == "--spec":

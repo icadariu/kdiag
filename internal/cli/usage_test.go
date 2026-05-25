@@ -210,13 +210,13 @@ func TestViewFlagSeen(t *testing.T) {
 	}{
 		{"empty", nil, ""},
 		{"no view flags", []string{"my-pod", "-n", "ns"}, ""},
-		{"yml-path space form", []string{"--yml-path", "x"}, "yml-path"},
-		{"yml-path equals form", []string{"--yml-path=x"}, "yml-path"},
+		{"path space form", []string{"--path", "x"}, "path"},
+		{"path equals form", []string{"--path=x"}, "path"},
 		{"resources", []string{"--resources"}, "resources"},
 		{"spec", []string{"--spec"}, "spec"},
 		{"az", []string{"--az"}, "az"},
 		{"first wins when multiple present", []string{"--resources", "--az"}, "resources"},
-		{"yml-path wins when first", []string{"--yml-path", "x", "--resources"}, "yml-path"},
+		{"path wins when first", []string{"--path", "x", "--resources"}, "path"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -231,21 +231,21 @@ func TestPrintInspectUsage_NoViewShowsAll(t *testing.T) {
 	var b bytes.Buffer
 	PrintInspectUsage(&b, nil)
 	out := b.String()
-	for _, flag := range []string{"--yml-path", "--yaml", "--resources", "--spec", "--az"} {
+	for _, flag := range []string{"--path", "--format", "--resources", "--spec", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}
 	}
 }
 
-func TestPrintInspectUsage_FilteredByYMLPath(t *testing.T) {
+func TestPrintInspectUsage_FilteredByPath(t *testing.T) {
 	var b bytes.Buffer
-	PrintInspectUsage(&b, []string{"--yml-path", "memory"})
+	PrintInspectUsage(&b, []string{"--path", "memory"})
 	out := b.String()
-	if !strings.Contains(out, "  --yml-path") {
-		t.Errorf("output missing flag line for --yml-path:\n%s", out)
+	if !strings.Contains(out, "  --path") {
+		t.Errorf("output missing flag line for --path:\n%s", out)
 	}
-	for _, flag := range []string{"--yaml", "--resources", "--spec", "--az"} {
+	for _, flag := range []string{"--format", "--resources", "--spec", "--az"} {
 		if strings.Contains(out, "  "+flag) {
 			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
 		}
@@ -257,15 +257,52 @@ func TestPrintInspectUsage_FilteredByResources(t *testing.T) {
 	PrintInspectUsage(&b, []string{"--resources"})
 	out := b.String()
 	// These flags should have their own option lines
-	for _, flag := range []string{"--resources", "--yaml", "--az"} {
+	for _, flag := range []string{"--resources", "--format", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}
 	}
 	// These should NOT have their own option lines (but may appear in descriptions)
-	for _, flag := range []string{"--yml-path", "--spec"} {
+	for _, flag := range []string{"--path", "--spec"} {
 		if strings.Contains(out, "  "+flag) {
 			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
+		}
+	}
+}
+
+func TestPrintYMLPathTopic(t *testing.T) {
+	var b bytes.Buffer
+	PrintYMLPathTopic(&b)
+	out := b.String()
+	for _, want := range []string{
+		"--path <needle>",
+		"Walk the resource YAML",
+		"Smart-case",
+		"glob",
+		"Examples:",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("PrintYMLPathTopic missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestPrintRootBanner_TerseAndNoCommandList(t *testing.T) {
+	var b bytes.Buffer
+	PrintRootBanner(&b)
+	out := b.String()
+	for _, want := range []string{
+		"kdiag — Kubernetes diagnostic CLI",
+		`kdiag -h`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("PrintRootBanner missing %q:\n%s", want, out)
+		}
+	}
+	// Must not enumerate commands — that lives in PrintRootUsage.
+	for _, banned := range []string{"inspect", "diff", "events", "sort", "completion"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("PrintRootBanner should not list %q:\n%s", banned, out)
 		}
 	}
 }

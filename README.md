@@ -5,7 +5,9 @@ and availability-zone distribution.
 
 Help is nested kubectl-style: `kdiag -h` lists top-level commands,
 `kdiag inspect -h` lists kinds, and `kdiag inspect pod -h` shows that
-leaf's flags and examples.
+leaf's flags and examples. `kdiag help <command>` is equivalent to
+`kdiag <command> -h`; long-form topics live under `kdiag help <topic>`
+(e.g. `kdiag help yml-path` for the `--path` flag).
 
 ## Commands
 
@@ -43,18 +45,18 @@ instead of container state.
 
 #### Pod output flags
 
-`--yaml` emits a single yq-safe YAML document instead of text.
+`--format yaml` emits a single yq-safe YAML document instead of text.
 `--resources` narrows the output to per-container resource info (text or YAML).
-`--yml-path <keyword>` finds all paths matching the keyword.
-`--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
-mutually exclusive with `--resources` / `--yml-path` since each
+`--path <keyword>` finds all paths matching the keyword.
+`--az` composes with `--format yaml` (emits `{placements, zoneSummary}`); it is
+mutually exclusive with `--resources` / `--path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--yaml` | Emit a single yq-safe YAML document instead of text |
+| `--format <text\|yaml>` | Output format (default: `text`) |
 | `--resources` | Narrow output to per-container resource info (text or YAML) |
-| `--yml-path <keyword>` | Find all paths matching the keyword in the YAML |
+| `--path <keyword>` | Find all paths matching the keyword in the YAML |
 
 Output includes init containers and sidecar containers (initContainer with
 `restartPolicy: Always`, k8s 1.28+), labeled `Init Container:` / `Sidecar Container:`
@@ -79,10 +81,10 @@ kdiag inspect pod --az -n example-system
 kdiag inspect pod --az -n example-system -l 'app=gateway-proxy'
 
 # Single pod, full output as YAML (yq-pipeable)
-kdiag inspect pod my-pod --yaml | yq '.containers[].name'
+kdiag inspect pod my-pod --format yaml | yq '.containers[].name'
 
 # Resources for every matching pod as YAML (flat list)
-kdiag inspect pod -l 'app=gateway-proxy' --yaml | yq '.[0].name'
+kdiag inspect pod -l 'app=gateway-proxy' --format yaml | yq '.[0].name'
 ```
 
 ---
@@ -122,21 +124,21 @@ Workload summary fields:
 
 #### Workload output flags
 
-`--yaml` emits a kdiag-shaped YAML document:
+`--format yaml` emits a kdiag-shaped YAML document:
 `{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
 `--spec` (deploy only) emits the pod template spec (text or YAML).
 `--resources` narrows output to per-container resource info (text or YAML).
-`--yml-path <keyword>` finds all paths matching the keyword.
-`--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
-mutually exclusive with `--resources` / `--spec` / `--yml-path` since each
+`--path <keyword>` finds all paths matching the keyword.
+`--az` composes with `--format yaml` (emits `{placements, zoneSummary}`); it is
+mutually exclusive with `--resources` / `--spec` / `--path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--yaml` | Emit a single yq-safe YAML document (kdiag-shaped) |
+| `--format yaml` | Emit a single yq-safe YAML document (kdiag-shaped) |
 | `--spec` | Emit the pod template spec (deploy only; errors on other kinds) |
 | `--resources` | Narrow output to per-container resource info (text or YAML) |
-| `--yml-path <keyword>` | Find all paths matching the keyword in the YAML |
+| `--path <keyword>` | Find all paths matching the keyword in the YAML |
 
 For `inspect deploy`, `--resources` operates on the deployment template (no
 pod lookup). For `ds`/`sts`/`rs`, `--resources` keeps the per-pod text-block
@@ -163,7 +165,7 @@ kdiag inspect sts -n my-ns my-statefulset
 kdiag inspect rs  -n my-ns my-replicaset-abc123
 
 # Deployment summary as YAML (yq-pipeable)
-kdiag inspect deploy my-deployment --yaml | yq '.pods | length'
+kdiag inspect deploy my-deployment --format yaml | yq '.pods | length'
 
 # Pod template spec as text
 kdiag inspect deploy my-deployment --spec
@@ -207,7 +209,10 @@ kdiag inspect node
 
 ---
 
-### `inspect --yml-path`
+### `inspect --path`
+
+See also `kdiag help yml-path` for a concise topic page covering the same
+material.
 
 Find the `yq` path of any key inside a resource's YAML. Useful when
 you know the keyword (`Burstable`, `memory`, `imagePullPolicy`, …) but not where it
@@ -221,7 +226,7 @@ are grouped under a `<name>:` header for clarity. Single-element or unnamed
 arrays have no header.
 
 Match semantics: by default the needle must equal the **full** key —
-so `--yml-path name` matches the key `name` but NOT `namespace`, `generateName`, or
+so `--path name` matches the key `name` but NOT `namespace`, `generateName`, or
 `container-1-tiny`. Use `*` as a glob for fuzzier matches: `name*` (prefix),
 `*name` (suffix), `*name*` (substring). The whole string still has to match
 end-to-end.
@@ -229,7 +234,7 @@ end-to-end.
 Key-match recursion: when a needle matches a *key* the walker emits the
 match and continues descending into the value, so common needles like
 `*name*` or `*spec*` will surface every nested occurrence. This is
-intentional — `--yml-path` is grep-like, not deepest-match-only.
+intentional — `--path` is grep-like, not deepest-match-only.
 
 Smart-case matching, like ripgrep: an **all-lowercase** needle is
 case-insensitive; any uppercase character makes the match case-sensitive.
@@ -239,21 +244,21 @@ keys (`f:image`, `k:{"name":"..."}`, …) shadow real field names and would
 otherwise dominate every result.
 
 ```text
-kdiag inspect <kind> [<name> | -l <label>] --yml-path <keyword>
+kdiag inspect <kind> [<name> | -l <label>] --path <keyword>
 ```
 
 ```sh
 # Find the yq path of a key
-kdiag inspect pod my-pod --yml-path qosClass
+kdiag inspect pod my-pod --path qosClass
 # .status.qosClass
 
 # Exact key match (no substring) — `name` does NOT match `namespace`
-kdiag inspect pod my-pod --yml-path name
+kdiag inspect pod my-pod --path name
 # .metadata.name
 # .spec.containers[0].name
 
 # Glob match for partial keys (multi-container deployment)
-kdiag inspect deploy kdiag-multicont -n kdiag-test --yml-path memory
+kdiag inspect deploy kdiag-multicont -n kdiag-test --path memory
 # api:
 #   .spec.template.spec.containers[0].resources.limits.memory
 #   .spec.template.spec.containers[0].resources.requests.memory
@@ -262,7 +267,7 @@ kdiag inspect deploy kdiag-multicont -n kdiag-test --yml-path memory
 #   .spec.template.spec.containers[1].resources.requests.memory
 
 # Search across all pods matched by a selector
-kdiag inspect pod -l app=test-app -n kdiag-test --yml-path image
+kdiag inspect pod -l app=test-app -n kdiag-test --path image
 # Pod/test-app-6dd566fbff-jd2vw:
 #   .spec.containers[0].image
 #   .status.containerStatuses[0].image
@@ -271,7 +276,7 @@ kdiag inspect pod -l app=test-app -n kdiag-test --yml-path image
 #   .status.containerStatuses[0].image
 
 # Works for CRDs too
-kdiag inspect certificates.cert-manager.io my-cert --yml-path renewBefore
+kdiag inspect certificates.cert-manager.io my-cert --path renewBefore
 ```
 
 ---
@@ -554,7 +559,7 @@ The binary embeds `version` (from `git describe --tags --always --dirty`),
 `bash` or `zsh`. Scripts cover top-level subcommands, `inspect`
 kinds, `diff` and `sort` kinds (any kind the cluster exposes — built-in
 or CRD), and per-command flags (`-n/--namespace`, `-l/--label`,
-`--full`, `--yaml`, `--resources`, `--spec`, `--az`).
+`--full`, `--format`, `--resources`, `--spec`, `--az`, `--path`).
 
 Namespace and resource names are completed dynamically by querying the
 cluster — for example:
@@ -619,7 +624,7 @@ internal/
     inspect_deploy.go      # inspect deploy (YAML-mode flags on the pod template)
     inspect_workloads.go   # inspect ds / sts / rs
     inspect_node.go        # inspect node
-    inspect_yml_path.go    # --yml-path walker (shared across inspect kinds)
+    inspect_yml_path.go    # --path walker (shared across inspect kinds)
     az_pods.go             # printAZTable helper for --az on inspect subcommands
     events.go              # events command
     diff.go                # diff command — diff rs + generic two-name diff

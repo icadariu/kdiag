@@ -26,30 +26,23 @@ func runInspectDeploy(args []string) {
 		selector string
 		showAZ   bool
 		showSpec bool
-		showYAML bool
+		format   string
 	)
 	fs.StringVarP(&selector, "label", "l", "", "label selector to identify the deployment")
-	if cli.ViewFlagSeen(args) != "yml-path" {
+	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
 		fs.BoolVar(&showSpec, "spec", false, "print pod template spec (text or YAML)")
-		fs.BoolVar(&showYAML, "yaml", false, "emit yq-safe YAML instead of text")
-		// `--yml` is an accepted alias for `--yaml`.
-		fs.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
-			if name == "yml" {
-				return "yaml"
-			}
-			return pflag.NormalizedName(name)
-		})
+		fs.StringVar(&format, "format", "text", "output format: text|yaml")
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
-		// extractYMLPathArgs rejects --resources with --yml-path explicitly,
+		// extractPathArgs rejects --resources with --path explicitly,
 		// but hide it from -h so users aren't tempted.
 		_ = fs.MarkHidden("resources")
 	}
 	fs.Usage = func() { printInspectDeployHelp(os.Stderr, fs, args) }
 
 	// Check for help in args (it may not be the first element if other flags
-	// like --yml-path appear before -h).
+	// like --path appear before -h).
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" {
 			printInspectDeployHelp(os.Stdout, fs, args)
@@ -57,17 +50,23 @@ func runInspectDeploy(args []string) {
 		}
 	}
 
-	// Only parse args that don't contain unregistered flags (like --yml-path).
-	// The dispatcher handles --yml-path before calling the handler, but we
-	// make an exception for help (above) to allow filtering help when --yml-path
-	// is present. Any remaining --yml-path is an error.
-	if cli.ViewFlagSeen(args) == "yml-path" {
-		fmt.Fprintln(os.Stderr, "Error: --yml-path is handled by the dispatcher and should not reach the handler")
+	// Only parse args that don't contain unregistered flags (like --path).
+	// The dispatcher handles --path before calling the handler, but we
+	// make an exception for help (above) to allow filtering help when --path
+	// is present. Any remaining --path is an error.
+	if cli.ViewFlagSeen(args) == "path" {
+		fmt.Fprintln(os.Stderr, "Error: --path is handled by the dispatcher and should not reach the handler")
 		os.Exit(1)
 	}
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
+	switch format {
+	case "", "text", "yaml":
+	default:
+		cli.Fatal(fmt.Errorf("--format must be 'text' or 'yaml', got %q", format))
+	}
+	showYAML := format == "yaml"
 
 	// Resolve the deployment: either a positional <name> or --label <selector>
 	// (mirrors `diff rs`). Selector must resolve to exactly one deployment.
@@ -124,8 +123,8 @@ func runInspectDeploy(args []string) {
 		}
 	}
 
-	// --resources/--spec/--az are view selectors (mutex); --yaml is a format
-	// flag that composes with any view.
+	// --resources/--spec/--az are view selectors (mutex); --format composes
+	// with any view.
 	if showAZ && (*showResources || showSpec) {
 		fmt.Fprintln(os.Stderr, "Error: --az is mutually exclusive with --resources/--spec (all select a view)")
 		os.Exit(1)
@@ -241,13 +240,13 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<deployment-name> | -l <label>]")
 	fmt.Fprintln(w, "\nShow deployment summary and per-pod container state.")
-	fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a yq-safe YAML document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML document.")
 	switch seen {
-	case "yml-path":
-		fmt.Fprintln(w, "\nView: --yml-path is set. Pass --yml-path <needle> with -n/-l only.")
+	case "path":
+		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with -n/-l only. See `kdiag help yml-path`.")
 	case "":
-		fmt.Fprintln(w, "\nViews: --resources, --spec, --az, --yml-path are mutually exclusive.")
-		fmt.Fprintln(w, "  --yaml composes with --resources/--spec/--az; --yml-path takes only -n/-l.")
+		fmt.Fprintln(w, "\nViews: --resources, --spec, --az, --path are mutually exclusive.")
+		fmt.Fprintln(w, "  --format composes with --resources/--spec/--az; --path takes only -n/-l.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, fs.FlagUsages())
@@ -259,34 +258,34 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 
 func deployExamples(seen string) []string {
 	switch seen {
-	case "yml-path":
+	case "path":
 		return []string{
-			"  kdiag inspect deploy my-deploy --yml-path memory",
-			"  kdiag inspect deploy -l app=my-app --yml-path '*image*'",
+			"  kdiag inspect deploy my-deploy --path memory",
+			"  kdiag inspect deploy -l app=my-app --path '*image*'",
 		}
 	case "resources":
 		return []string{
 			"  kdiag inspect deploy my-deploy --resources",
-			"  kdiag inspect deploy my-deploy --resources --yaml",
+			"  kdiag inspect deploy my-deploy --resources --format yaml",
 		}
 	case "spec":
 		return []string{
 			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --yaml | yq '.containers[].name'",
+			"  kdiag inspect deploy my-deploy --spec --format yaml | yq '.containers[].name'",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect deploy my-deploy --az",
-			"  kdiag inspect deploy my-deploy --az --yaml",
+			"  kdiag inspect deploy my-deploy --az --format yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect deploy my-deploy",
-			"  kdiag inspect deploy my-deploy --yaml | yq '.pods | length'",
-			"  kdiag inspect deploy my-deploy --resources --yaml",
+			"  kdiag inspect deploy my-deploy --format yaml | yq '.pods | length'",
+			"  kdiag inspect deploy my-deploy --resources --format yaml",
 			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --yaml | yq '.containers[].name'",
-			"  kdiag inspect deploy my-deploy --yml-path memory",
+			"  kdiag inspect deploy my-deploy --spec --format yaml | yq '.containers[].name'",
+			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}
 }
