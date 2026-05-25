@@ -4,7 +4,16 @@ FIXTURES        = test/fixtures/kdiag-test.yaml
 
 BIN        = kdiag
 CMD_PKG    = .
-VERSION    = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+# Branch-aware version stamping. On main, --dirty is honoured so release-ish
+# builds still flag uncommitted edits. On any other branch (or detached HEAD),
+# we suffix -dev to signal "not a release" and drop --dirty since -dev already
+# implies dev-state.
+BRANCH     = $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo dev)
+ifeq ($(BRANCH),main)
+VERSION    = $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+else
+VERSION    = $(shell git describe --tags --always 2>/dev/null || echo dev)-dev
+endif
 BUILDTIME  = $(shell date -u +%d-%m-%y_%H:%M)
 COMMIT     = $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 LDFLAGS    = -X main.version=$(VERSION) -X main.buildTime=$(BUILDTIME) -X main.commit=$(COMMIT)
