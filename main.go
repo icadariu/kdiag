@@ -14,8 +14,8 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		cli.PrintRootBanner(os.Stdout)
-		return
+		cli.PrintRootBanner(os.Stderr)
+		os.Exit(1)
 	}
 
 	args := os.Args[1:]
@@ -38,7 +38,7 @@ func main() {
 		handleHelp(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown command: %s\n\n", args[0])
-		cli.PrintRootUsage(os.Stderr)
+		cli.PrintRootError(os.Stderr)
 		os.Exit(1)
 	}
 }
@@ -91,7 +91,7 @@ func handleHelp(args []string) {
 		cmd.RunCompletion(sub)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown help topic: %s\n\n", topic)
-		cli.PrintRootUsage(os.Stderr)
+		cli.PrintRootError(os.Stderr)
 		os.Exit(1)
 	}
 }

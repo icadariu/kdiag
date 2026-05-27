@@ -21,12 +21,12 @@ func runInspectPod(args []string) {
 	var (
 		selector string
 		showAZ   bool
-		format   string
+		output   string
 	)
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
 	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-		fs.StringVar(&format, "format", "text", "output format: text|yaml")
+		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
 		// extractPathArgs rejects --resources with --path explicitly,
@@ -55,12 +55,12 @@ func runInspectPod(args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
-	switch format {
-	case "", "text", "yaml":
+	switch output {
+	case "", "json", "yaml":
 	default:
-		cli.Fatal(fmt.Errorf("--format must be 'text' or 'yaml', got %q", format))
+		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
 	}
-	showYAML := format == "yaml"
+	structured := output != ""
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
@@ -105,14 +105,14 @@ func runInspectPod(args []string) {
 			os.Exit(1)
 		case 1:
 			switch {
-			case showAZ && showYAML:
-				emitAZYAML(env, ctx, matches)
+			case showAZ && structured:
+				emit(output, collectAZ(env, ctx, matches))
 			case showAZ:
 				printAZTable(env, ctx, matches)
-			case showYAML && *showResources:
-				emitYAML(resourceSliceFor(matches[0]))
-			case showYAML:
-				emitYAML(podInfoFrom(matches[0]))
+			case structured && *showResources:
+				emit(output, resourceSliceFor(matches[0]))
+			case structured:
+				emit(output, podInfoFrom(matches[0]))
 			default:
 				inspectPodObject(matches[0], *showResources)
 			}
@@ -132,7 +132,7 @@ func runInspectPod(args []string) {
 		cli.Fatal(fmt.Errorf("list pods: %w", err))
 	}
 	if len(pods.Items) == 0 {
-		if showYAML {
+		if structured {
 			fmt.Fprintln(os.Stderr, "No pods found.")
 			os.Exit(1)
 		}
@@ -140,22 +140,22 @@ func runInspectPod(args []string) {
 		return
 	}
 	switch {
-	case showAZ && showYAML:
-		emitAZYAML(env, ctx, pods.Items)
+	case showAZ && structured:
+		emit(output, collectAZ(env, ctx, pods.Items))
 	case showAZ:
 		printAZTable(env, ctx, pods.Items)
-	case showYAML && *showResources:
+	case structured && *showResources:
 		all := make([]containerResourceSlice, 0)
 		for _, p := range pods.Items {
 			all = append(all, resourceSliceFor(p)...)
 		}
-		emitYAML(all)
-	case showYAML:
+		emit(output, all)
+	case structured:
 		out := make([]podInfo, 0, len(pods.Items))
 		for _, p := range pods.Items {
 			out = append(out, podInfoFrom(p))
 		}
-		emitYAML(out)
+		emit(output, out)
 	default:
 		for i := range pods.Items {
 			p := pods.Items[i]
@@ -271,14 +271,14 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
 	if seen != "path" {
-		fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML doc (map for one pod, list for many).")
+		fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured doc (map for one pod, list for many).")
 	}
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  --format composes with --resources and --az; --path takes only --namespace/--label.")
+		fmt.Fprintln(w, "  -o/--output composes with --resources and --az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
@@ -298,17 +298,17 @@ func podExamples(seen string) []string {
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect pod my-pod --resources --format yaml",
+			"  kdiag inspect pod my-pod --resources -o yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
-			"  kdiag inspect pod --az --format yaml --label app=my-app",
+			"  kdiag inspect pod --az -o yaml --label app=my-app",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect pod --label app=my-app --format yaml",
+			"  kdiag inspect pod --label app=my-app -o yaml",
 			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
 		}
 	}

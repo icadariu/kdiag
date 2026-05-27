@@ -32,7 +32,7 @@ _kdiag_count_positionals() {
     local i
     for ((i=start_idx; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--path|--format|--since)
+            -n|--namespace|-l|--label|--path|-o|--output|--since)
                 # Skip flag and its value
                 ((i++))
                 ;;
@@ -65,7 +65,7 @@ _kdiag_find_kind_idx() {
     local i
     for ((i=2; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--path|--format)
+            -n|--namespace|-l|--label|--path|-o|--output)
                 ((i++))
                 ;;
             -*)
@@ -85,7 +85,10 @@ _kdiag() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     cword=${COMP_CWORD}
 
-    local top_cmds="completion diff events help inspect sort"
+    # Top-level completion suggestions exclude the housekeeping commands
+    # (completion, help) — they remain valid invocations, but are hidden
+    # from `kdiag <TAB>` to match the bare-banner / -h split.
+    local top_cmds="diff events inspect sort"
     local help_topics="completion diff events inspect sort yml-path path"
     local inspect_kinds="pod deployment daemonset statefulset replicaset node"
     # sort accepts any kind the API server exposes (built-in or CRD); these
@@ -111,8 +114,8 @@ _kdiag() {
         --label|-l|--path)
             return
             ;;
-        --format)
-            COMPREPLY=( $(compgen -W "text yaml" -- "${cur}") )
+        -o|--output)
+            COMPREPLY=( $(compgen -W "json yaml" -- "${cur}") )
             return
             ;;
     esac
@@ -131,20 +134,20 @@ _kdiag() {
     local _i
     for ((_i=1; _i<COMP_CWORD; _i++)); do
         case "${COMP_WORDS[_i]}" in
-            --path)       view_seen=path ;;
-            --resources)  view_seen=resources ;;
-            --spec)       view_seen=spec ;;
-            --az)         view_seen=az ;;
+            --path)              view_seen=path ;;
+            --resources)         view_seen=resources ;;
+            --deployment-spec)   view_seen=spec ;;
+            --az)                view_seen=az ;;
         esac
     done
 
     local inspect_flags
     case "${view_seen}" in
         path)       inspect_flags="${shared_flags} --path" ;;
-        resources)  inspect_flags="${shared_flags} --resources --az --format" ;;
-        spec)       inspect_flags="${shared_flags} --spec --format" ;;
-        az)         inspect_flags="${shared_flags} --az --format" ;;
-        *)          inspect_flags="${shared_flags} --resources --az --spec --format --path" ;;
+        resources)  inspect_flags="${shared_flags} --resources --az --output -o" ;;
+        spec)       inspect_flags="${shared_flags} --deployment-spec --output -o" ;;
+        az)         inspect_flags="${shared_flags} --az --output -o" ;;
+        *)          inspect_flags="${shared_flags} --resources --az --deployment-spec --output -o --path" ;;
     esac
 
     case "${cmd}" in

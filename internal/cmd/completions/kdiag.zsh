@@ -35,7 +35,7 @@ _kdiag_at_flag_value() {
     local prev_idx=$((_kdiag_all_current - 1))
     (( prev_idx >= 1 )) || return 1
     case "${_kdiag_all_words[prev_idx]}" in
-        -n|--namespace|-l|--label|--path|--format) return 0 ;;
+        -n|--namespace|-l|--label|--path|-o|--output) return 0 ;;
     esac
     return 1
 }
@@ -52,7 +52,7 @@ _kdiag_find_kind_for() {
             continue
         fi
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--path|--format)
+            -n|--namespace|-l|--label|--path|-o|--output)
                 # Flag that takes a value — skip both flag and value.
                 ((i++))
                 ;;
@@ -98,7 +98,7 @@ _kdiag_count_positionals() {
         fi
         if (( ! found_kind )); then
             case "${_kdiag_all_words[i]}" in
-                -n|--namespace|-l|--label|--path|--format)
+                -n|--namespace|-l|--label|--path|-o|--output)
                     ((i++))
                     ;;
                 -*)
@@ -115,7 +115,7 @@ _kdiag_count_positionals() {
         fi
         # We have found both the subcommand and the kind. Now we count positionals after the kind.
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--path|--format)
+            -n|--namespace|-l|--label|--path|-o|--output)
                 ((i++))
                 ;;
             -*)
@@ -171,17 +171,18 @@ _kdiag() {
         case "${_kdiag_all_words[_i]}" in
             --path)       view_seen=path ;;
             --resources)  view_seen=resources ;;
-            --spec)       view_seen=spec ;;
+            --deployment-spec)       view_seen=spec ;;
             --az)         view_seen=az ;;
         esac
     done
 
     local -a top_cmds inspect_kinds diff_kinds completion_shells help_topics
+    # Top-level completion suggestions exclude the housekeeping commands
+    # (completion, help) — they remain valid invocations, but are hidden
+    # from `kdiag <TAB>` to match the bare-banner / -h split.
     top_cmds=(
-        'completion:Generate shell completion (bash|zsh)'
         'diff:Diff Kubernetes resources (rs, pod, node, …)'
         'events:Show events in the current namespace'
-        'help:Show help for a command or topic (e.g. kdiag help inspect)'
         'inspect:Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement'
         'sort:Sort resources by creation date (newest last)'
     )
@@ -224,32 +225,32 @@ _kdiag() {
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '--format[Output format: text|yaml]:format:(text yaml)'
+                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                 '--az[Show availability-zone placement]'
             )
             ;;
         spec)
             inspect_flags=(
                 $shared_flags
-                '--spec[deploy: print .spec.template.spec as YAML]'
-                '--format[Output format: text|yaml]:format:(text yaml)'
+                '--deployment-spec[deploy: print .spec.template.spec (structured)]'
+                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
             )
             ;;
         az)
             inspect_flags=(
                 $shared_flags
                 '--az[Show availability-zone placement]'
-                '--format[Output format: text|yaml]:format:(text yaml)'
+                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
             )
             ;;
         *)
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '--format[Output format: text|yaml]:format:(text yaml)'
+                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                 '--path[Walk YAML and print yq paths matching a key or value]'
                 '--az[Show availability-zone placement]'
-                '--spec[deploy: print .spec.template.spec as YAML]'
+                '--deployment-spec[deploy: print .spec.template.spec (structured)]'
             )
             ;;
     esac
@@ -315,7 +316,7 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -323,14 +324,14 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                             '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                         )
@@ -349,32 +350,32 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
                                     spec)
                                         kflags=(
                                             $shared_flags
-                                            '--spec[deploy: print .spec.template.spec as YAML]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '--deployment-spec[deploy: print .spec.template.spec (structured)]'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                         )
                                         ;;
                                     az)
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                             '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
-                                            '--spec[deploy: print .spec.template.spec as YAML]'
+                                            '--deployment-spec[deploy: print .spec.template.spec (structured)]'
                                         )
                                         ;;
                                 esac
@@ -391,7 +392,7 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -399,14 +400,14 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--az[Show availability-zone placement]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '--format[Output format: text|yaml]:format:(text yaml)'
+                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
                                             '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                         )
@@ -414,7 +415,10 @@ _kdiag() {
                                 esac
                                 ;;
                             node)
-                                kflags=($shared_flags)
+                                kflags=(
+                                    $shared_flags
+                                    '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                )
                                 ;;
                             *)
                                 # Kind not yet typed — offer the union so a

@@ -26,13 +26,13 @@ func runInspectDeploy(args []string) {
 		selector string
 		showAZ   bool
 		showSpec bool
-		format   string
+		output   string
 	)
 	fs.StringVarP(&selector, "label", "l", "", "label selector to identify the deployment")
 	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-		fs.BoolVar(&showSpec, "spec", false, "print pod template spec (text or YAML)")
-		fs.StringVar(&format, "format", "text", "output format: text|yaml")
+		fs.BoolVar(&showSpec, "deployment-spec", false, "print pod template spec (text or structured)")
+		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
 		// extractPathArgs rejects --resources with --path explicitly,
@@ -61,12 +61,12 @@ func runInspectDeploy(args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
-	switch format {
-	case "", "text", "yaml":
+	switch output {
+	case "", "json", "yaml":
 	default:
-		cli.Fatal(fmt.Errorf("--format must be 'text' or 'yaml', got %q", format))
+		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
 	}
-	showYAML := format == "yaml"
+	structured := output != ""
 
 	// Resolve the deployment: either a positional <name> or --label <selector>
 	// (mirrors `diff rs`). Selector must resolve to exactly one deployment.
@@ -84,7 +84,7 @@ func runInspectDeploy(args []string) {
 	}
 
 	if boolsSet(*showResources, showSpec) > 1 {
-		fmt.Fprintln(os.Stderr, "Error: --resources and --spec are mutually exclusive")
+		fmt.Fprintln(os.Stderr, "Error: --resources and --deployment-spec are mutually exclusive")
 		os.Exit(1)
 	}
 
@@ -123,14 +123,14 @@ func runInspectDeploy(args []string) {
 		}
 	}
 
-	// --resources/--spec/--az are view selectors (mutex); --format composes
-	// with any view.
+	// --resources/--deployment-spec/--az are view selectors (mutex); -o/--output
+	// composes with any view.
 	if showAZ && (*showResources || showSpec) {
-		fmt.Fprintln(os.Stderr, "Error: --az is mutually exclusive with --resources/--spec (all select a view)")
+		fmt.Fprintln(os.Stderr, "Error: --az is mutually exclusive with --resources/--deployment-spec (all select a view)")
 		os.Exit(1)
 	}
 
-	if showYAML {
+	if structured {
 		switch {
 		case showAZ:
 			labelSel := metav1.FormatLabelSelector(d.Spec.Selector)
@@ -138,19 +138,19 @@ func runInspectDeploy(args []string) {
 			if err != nil {
 				cli.Fatal(fmt.Errorf("list pods: %w", err))
 			}
-			emitAZYAML(env, ctx, pods.Items)
+			emit(output, collectAZ(env, ctx, pods.Items))
 		case showSpec:
-			emitYAML(d.Spec.Template.Spec)
+			emit(output, d.Spec.Template.Spec)
 		case *showResources:
 			pods := listDeployPods(env, ctx, d)
 			all := make([]containerResourceSlice, 0)
 			for _, p := range pods {
 				all = append(all, resourceSliceFor(p)...)
 			}
-			emitYAML(all)
+			emit(output, all)
 		default:
 			pods := listDeployPods(env, ctx, d)
-			emitYAML(deployWorkloadInfo(env, d, pods))
+			emit(output, deployWorkloadInfo(env, d, pods))
 		}
 		return
 	}
@@ -240,13 +240,13 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<deployment-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow deployment summary and per-pod container state.")
-	fmt.Fprintln(w, "\nFormat: default is text; --format yaml emits a yq-safe YAML document.")
+	fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured document.")
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
-		fmt.Fprintln(w, "\nViews: --resources, --spec, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  --format composes with --resources/--spec/--az; --path takes only --namespace/--label.")
+		fmt.Fprintln(w, "\nViews: --resources, --deployment-spec, --az, --path are mutually exclusive.")
+		fmt.Fprintln(w, "  -o/--output composes with --resources/--deployment-spec/--az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
@@ -266,22 +266,22 @@ func deployExamples(seen string) []string {
 	case "resources":
 		return []string{
 			"  kdiag inspect deploy my-deploy --resources",
-			"  kdiag inspect deploy my-deploy --resources --format yaml",
+			"  kdiag inspect deploy my-deploy --resources -o yaml",
 		}
-	case "spec":
+	case "deployment-spec":
 		return []string{
-			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --format yaml",
+			"  kdiag inspect deploy my-deploy --deployment-spec",
+			"  kdiag inspect deploy my-deploy --deployment-spec -o yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect deploy my-deploy --az",
-			"  kdiag inspect deploy my-deploy --az --format yaml",
+			"  kdiag inspect deploy my-deploy --az -o yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect deploy my-deploy",
-			"  kdiag inspect deploy my-deploy --resources --format yaml",
+			"  kdiag inspect deploy my-deploy --resources -o yaml",
 			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}
