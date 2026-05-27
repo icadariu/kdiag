@@ -25,6 +25,10 @@ func runInspectNode(args []string) {
 	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (ignored — node is cluster-scoped)")
 	var selector string
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
+	var output string
+	if cli.ViewFlagSeen(args) != "path" {
+		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
+	}
 	fs.Usage = func() { printInspectNodeHelp(os.Stderr, fs, args) }
 
 	// Check for help in args (it may not be the first element if other flags
@@ -47,6 +51,12 @@ func runInspectNode(args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
+	switch output {
+	case "", "json", "yaml":
+	default:
+		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
+	}
+	structured := output != ""
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
@@ -81,13 +91,58 @@ func runInspectNode(args []string) {
 	}
 
 	if len(nodes) == 0 {
+		if structured {
+			fmt.Fprintln(os.Stderr, "No nodes found.")
+			os.Exit(1)
+		}
 		fmt.Println("No nodes found.")
+		return
+	}
+	if structured {
+		if len(nodes) == 1 && len(rest) == 1 {
+			emit(output, nodeInfoFrom(nodes[0]))
+			return
+		}
+		infos := make([]nodeInfo, 0, len(nodes))
+		for _, n := range nodes {
+			infos = append(infos, nodeInfoFrom(n))
+		}
+		emit(output, infos)
 		return
 	}
 	for i := range nodes {
 		n := nodes[i]
 		fmt.Println("==========================================")
 		printNodeBlock(n)
+	}
+}
+
+// nodeInfo is the kdiag-shaped structured payload for `inspect node -o json|yaml`.
+// Mirrors what printNodeBlock prints in text mode — NOT the raw corev1.Node
+// (use kubectl for that).
+type nodeInfo struct {
+	Name           string            `json:"name"`
+	Zone           string            `json:"zone,omitempty"`
+	InstanceType   string            `json:"instanceType,omitempty"`
+	KubeletVersion string            `json:"kubeletVersion,omitempty"`
+	Taints         []string          `json:"taints,omitempty"`
+	Conditions     map[string]string `json:"conditions,omitempty"`
+	Allocatable    map[string]string `json:"allocatable,omitempty"`
+}
+
+func nodeInfoFrom(n corev1.Node) nodeInfo {
+	taints := make([]string, 0, len(n.Spec.Taints))
+	for _, t := range n.Spec.Taints {
+		taints = append(taints, fmt.Sprintf("%s=%s:%s", t.Key, t.Value, t.Effect))
+	}
+	return nodeInfo{
+		Name:           n.Name,
+		Zone:           kube.ZoneForNodeLabels(n.Labels),
+		InstanceType:   kube.InstanceTypeForNodeLabels(n.Labels),
+		KubeletVersion: n.Status.NodeInfo.KubeletVersion,
+		Taints:         taints,
+		Conditions:     kube.NodeConditionsSummary(n.Status.Conditions),
+		Allocatable:    kube.AllocatableMap(n.Status.Allocatable),
 	}
 }
 
@@ -111,6 +166,8 @@ func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	fmt.Fprintln(w, "\nShow zone for one node or a set of nodes.")
 	if seen == "path" {
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
+	} else {
+		fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured document.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
@@ -121,7 +178,7 @@ func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 		fmt.Fprintln(w, "  kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a --path taints")
 	default:
 		fmt.Fprintln(w, "  kdiag inspect node my-node")
-		fmt.Fprintln(w, "  kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a")
+		fmt.Fprintln(w, "  kdiag inspect node my-node -o yaml")
 		fmt.Fprintln(w, "  kdiag inspect node")
 	}
 }

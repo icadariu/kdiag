@@ -57,21 +57,36 @@ func printCommandList(w io.Writer, includeMeta bool) {
 	}
 }
 
-// PrintRootBanner is the no-args screen: usage line plus the sorted
-// command list. Matches §1 of the user spec.
+// PrintRootBanner is the bare `kdiag` (no-args) screen — a terse pointer:
+// branded title, usage line, and a hint to run `kdiag -h` for the command
+// list. Intentionally does NOT enumerate commands so the bare invocation
+// stays compact; the full list lives behind `kdiag -h` / `kdiag help`.
 func PrintRootBanner(w io.Writer) {
-	fmt.Fprint(w, `Usage:
+	fmt.Fprint(w, `kdiag — Kubernetes diagnostic CLI
+
+Usage:
   kdiag <command> [flags] [args]
 
+Run "kdiag -h" for the list of available commands.
 `)
-	printCommandList(w, false)
 }
 
 // PrintRootUsage is the `kdiag --help` / `kdiag -h` screen. Branded title,
 // command list, usage line, and a one-line pointer explaining that flags
-// vary per command. Matches §2 of the user spec.
+// vary per command.
 func PrintRootUsage(w io.Writer) {
 	fmt.Fprint(w, "kdiag — Kubernetes diagnostic CLI\n\n")
+	printRootUsageBody(w)
+}
+
+// PrintRootError is the unknown-command fallback. Same body as PrintRootUsage
+// but without the branded title — the title belongs only to the explicit
+// help screen, not to error output.
+func PrintRootError(w io.Writer) {
+	printRootUsageBody(w)
+}
+
+func printRootUsageBody(w io.Writer) {
 	printCommandList(w, true)
 	fmt.Fprint(w, `
 Usage:
@@ -107,21 +122,21 @@ Flags:
   <partial-name>         Partial pod name match (pod only)
 `)
 	if showFormat(seen) {
-		fmt.Fprintln(w, "  --format <text|yaml>   Output format (default: text)")
+		fmt.Fprintln(w, "  --output <json|yaml>   Output format (default: text)")
 	}
 	if showPath(seen) {
 		fmt.Fprintln(w, "  --path <needle>        Only print yq paths matching <needle> (kdiag help yml-path for details)")
 	}
 	if showResources(seen) {
-		fmt.Fprintln(w, "  --resources            Narrow output to container resources (text or YAML)")
+		fmt.Fprintln(w, "  --resources            Narrow output to container resources (text or structured)")
 	}
 	if showSpec(seen) {
-		fmt.Fprintln(w, "  --spec                 Deploy only: emit .spec.template.spec (text or YAML)")
+		fmt.Fprintln(w, "  --deployment-spec      Deploy only: emit .spec.template.spec (text or structured)")
 	}
 	if showAZ(seen) {
 		fmt.Fprint(w, `  --az                   Availability-zone placement (pod, deploy, ds, sts).
-                         Composes with --format yaml; mutually exclusive with
-                         --resources / --spec / --path (each selects a view).
+                         Composes with -o/--output; mutually exclusive with
+                         --resources / --deployment-spec / --path (each selects a view).
 `)
 	}
 	fmt.Fprintln(w)
@@ -134,15 +149,15 @@ Flags:
 }
 
 // Composition rules for view selectors:
-//   none seen   → show everything
-//   path        → show only --namespace, --label, --path
-//   resources   → show --resources, --format, --az; hide --path, --spec
-//   spec        → show --spec, --format; hide --path, --resources, --az
-//   az          → show --az, --format; hide --path, --resources, --spec
+//   none seen        → show everything
+//   path             → show only --namespace, --label, --path
+//   resources        → show --resources, -o/--output, --az; hide --path, --deployment-spec
+//   deployment-spec  → show --deployment-spec, -o/--output; hide --path, --resources, --az
+//   az               → show --az, -o/--output; hide --path, --resources, --deployment-spec
 func showPath(seen string) bool      { return seen == "" || seen == "path" }
 func showFormat(seen string) bool    { return seen != "path" }
 func showResources(seen string) bool { return seen == "" || seen == "resources" }
-func showSpec(seen string) bool      { return seen == "" || seen == "spec" }
+func showSpec(seen string) bool      { return seen == "" || seen == "deployment-spec" }
 func showAZ(seen string) bool        { return seen == "" || seen == "az" || seen == "resources" }
 
 func inspectExamples(seen string) []string {
@@ -155,22 +170,22 @@ func inspectExamples(seen string) []string {
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect deploy my-deploy --resources --format yaml",
+			"  kdiag inspect deploy my-deploy --resources -o yaml",
 		}
-	case "spec":
+	case "deployment-spec":
 		return []string{
-			"  kdiag inspect deploy my-deploy --spec",
-			"  kdiag inspect deploy my-deploy --spec --format yaml",
+			"  kdiag inspect deploy my-deploy --deployment-spec",
+			"  kdiag inspect deploy my-deploy --deployment-spec -o yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
-			"  kdiag inspect deploy my-deploy --az --format yaml",
+			"  kdiag inspect deploy my-deploy --az -o yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect deploy my-deploy --resources --format yaml",
+			"  kdiag inspect deploy my-deploy --resources -o yaml",
 			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}
@@ -193,8 +208,8 @@ Matching:
 
 Compatibility:
   --path composes with --namespace and --label.
-  --path is mutually exclusive with --format, --resources, --spec, --az
-  (each selects a different view).
+  --path is mutually exclusive with -o/--output, --resources, --deployment-spec,
+  --az (each selects a different view).
 
 Examples:
   kdiag inspect pod my-pod --path qosClass
@@ -326,10 +341,10 @@ Examples:
 }
 
 // ViewFlagSeen scans args for the first view-selector flag and returns its
-// short name ("path", "resources", "spec", "az") or "" if none is present.
-// Accepts both the space-separated form (--path x) and the inline form
-// (--path=x). Used by help printers and the completion scripts (transitively)
-// to filter what gets suggested once a view is set.
+// short name ("path", "resources", "deployment-spec", "az") or "" if none is
+// present. Accepts both the space-separated form (--path x) and the inline
+// form (--path=x). Used by help printers and the completion scripts
+// (transitively) to filter what gets suggested once a view is set.
 func ViewFlagSeen(args []string) string {
 	for _, a := range args {
 		switch {
@@ -337,8 +352,8 @@ func ViewFlagSeen(args []string) string {
 			return "path"
 		case a == "--resources":
 			return "resources"
-		case a == "--spec":
-			return "spec"
+		case a == "--deployment-spec":
+			return "deployment-spec"
 		case a == "--az":
 			return "az"
 		}

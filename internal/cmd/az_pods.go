@@ -78,8 +78,3 @@ func printAZTable(env *kube.KubeEnv, ctx context.Context, pods []corev1.Pod) {
 	}
 }
 
-// emitAZYAML writes the AZ view as a YAML document so `--az --yaml` is
-// yq-pipeable just like the other --yaml shapes.
-func emitAZYAML(env *kube.KubeEnv, ctx context.Context, pods []corev1.Pod) {
-	emitYAML(collectAZ(env, ctx, pods))
-}

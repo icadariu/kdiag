@@ -64,35 +64,58 @@ func commandsInOrder(t *testing.T, s string, includeMeta bool) {
 	}
 }
 
-// PrintRootBanner is the bare `kdiag` (no args) screen — Usage line plus
-// the sorted Available Commands. Matches §1 of the spec.
-func TestPrintRootBanner_HasUsageAndCommandList(t *testing.T) {
+// PrintRootBanner is the bare `kdiag` (no args) screen — terse: branded
+// title, usage line, and a hint to run `kdiag -h`. The command list is
+// reserved for `kdiag -h` and `kdiag help`.
+func TestPrintRootBanner_TerseHint(t *testing.T) {
 	var b bytes.Buffer
 	PrintRootBanner(&b)
 	out := b.String()
 
 	for _, want := range []string{
+		"kdiag — Kubernetes diagnostic CLI",
 		"Usage:",
 		"kdiag <command> [flags] [args]",
-		"Available Commands:",
+		`kdiag -h`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("PrintRootBanner missing %q:\n%s", want, out)
 		}
 	}
-	commandsInOrder(t, out, false)
-	// The bare banner should be terse — no branded title, no flags-vary
-	// pointer (that belongs in --help), and no meta commands (completion,
-	// help) which are reserved for the full --help screen.
+	// Bare banner must NOT enumerate commands; that lives behind --help.
 	for _, banned := range []string{
-		"kdiag — Kubernetes diagnostic CLI",
-		"Flags vary by command",
-		"completion",
-		"help",
+		"Available Commands:",
+		"inspect ",
+		"diff ",
+		"events ",
+		"sort ",
 	} {
 		if strings.Contains(out, banned) {
 			t.Errorf("PrintRootBanner should not contain %q:\n%s", banned, out)
 		}
+	}
+}
+
+// PrintRootError is the unknown-command fallback: same body as PrintRootUsage
+// but without the branded title (which belongs only to the explicit help
+// screen).
+func TestPrintRootError_NoBrandedTitle(t *testing.T) {
+	var b bytes.Buffer
+	PrintRootError(&b)
+	out := b.String()
+
+	for _, want := range []string{
+		"Available Commands:",
+		"Usage:",
+		"kdiag <command> [flags] [args]",
+		"Flags vary by command",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("PrintRootError missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "kdiag — Kubernetes diagnostic CLI") {
+		t.Errorf("PrintRootError should not contain the branded title:\n%s", out)
 	}
 }
 
@@ -299,7 +322,7 @@ func TestViewFlagSeen(t *testing.T) {
 		{"path space form", []string{"--path", "x"}, "path"},
 		{"path equals form", []string{"--path=x"}, "path"},
 		{"resources", []string{"--resources"}, "resources"},
-		{"spec", []string{"--spec"}, "spec"},
+		{"deployment-spec", []string{"--deployment-spec"}, "deployment-spec"},
 		{"az", []string{"--az"}, "az"},
 		{"first wins when multiple present", []string{"--resources", "--az"}, "resources"},
 		{"path wins when first", []string{"--path", "x", "--resources"}, "path"},
@@ -317,7 +340,7 @@ func TestPrintInspectUsage_NoViewShowsAll(t *testing.T) {
 	var b bytes.Buffer
 	PrintInspectUsage(&b, nil)
 	out := b.String()
-	for _, flag := range []string{"--path", "--format", "--resources", "--spec", "--az"} {
+	for _, flag := range []string{"--path", "--output", "--resources", "--deployment-spec", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}
@@ -331,7 +354,7 @@ func TestPrintInspectUsage_FilteredByPath(t *testing.T) {
 	if !strings.Contains(out, "  --path") {
 		t.Errorf("output missing flag line for --path:\n%s", out)
 	}
-	for _, flag := range []string{"--format", "--resources", "--spec", "--az"} {
+	for _, flag := range []string{"--output", "--resources", "--deployment-spec", "--az"} {
 		if strings.Contains(out, "  "+flag) {
 			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
 		}
@@ -343,13 +366,13 @@ func TestPrintInspectUsage_FilteredByResources(t *testing.T) {
 	PrintInspectUsage(&b, []string{"--resources"})
 	out := b.String()
 	// These flags should have their own option lines
-	for _, flag := range []string{"--resources", "--format", "--az"} {
+	for _, flag := range []string{"--resources", "--output", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}
 	}
 	// These should NOT have their own option lines (but may appear in descriptions)
-	for _, flag := range []string{"--path", "--spec"} {
+	for _, flag := range []string{"--path", "--deployment-spec"} {
 		if strings.Contains(out, "  "+flag) {
 			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
 		}

@@ -55,17 +55,19 @@ instead of container state.
 
 #### Pod output flags
 
-`--format yaml` emits a single yq-safe YAML document instead of text.
-`--resources` narrows the output to per-container resource info (text or YAML).
+`-o`/`--output` (kubectl-style) selects a structured format: `json` or `yaml`.
+Default output is text; passing `-o json` or `-o yaml` emits a single
+yq/jq-pipeable document instead.
+`--resources` narrows the output to per-container resource info (text or structured).
 `--path <keyword>` finds all paths matching the keyword.
-`--az` composes with `--format yaml` (emits `{placements, zoneSummary}`); it is
+`--az` composes with `-o`/`--output` (emits `{placements, zoneSummary}`); it is
 mutually exclusive with `--resources` / `--path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--format <text\|yaml>` | Output format (default: `text`) |
-| `--resources` | Narrow output to per-container resource info (text or YAML) |
+| `-o`, `--output <json\|yaml>` | Structured output (default: text) |
+| `--resources` | Narrow output to per-container resource info (text or structured) |
 | `--path <keyword>` | Find all paths matching the keyword in the YAML |
 
 Output includes init containers and sidecar containers (initContainer with
@@ -91,10 +93,10 @@ kdiag inspect pod --az --namespace example-system
 kdiag inspect pod --az --namespace example-system --label 'app=gateway-proxy'
 
 # Single pod, full output as YAML (yq-pipeable)
-kdiag inspect pod my-pod --format yaml | yq '.containers[].name'
+kdiag inspect pod my-pod -o yaml | yq '.containers[].name'
 
-# Resources for every matching pod as YAML (flat list)
-kdiag inspect pod --label 'app=gateway-proxy' --format yaml | yq '.[0].name'
+# Resources for every matching pod as JSON (flat list)
+kdiag inspect pod --label 'app=gateway-proxy' -o json | jq '.[0].name'
 ```
 
 ---
@@ -134,20 +136,20 @@ Workload summary fields:
 
 #### Workload output flags
 
-`--format yaml` emits a kdiag-shaped YAML document:
-`{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
-`--spec` (deploy only) emits the pod template spec (text or YAML).
-`--resources` narrows output to per-container resource info (text or YAML).
+`-o`/`--output` (kubectl-style) emits a kdiag-shaped document in `json` or
+`yaml`: `{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
+`--deployment-spec` (deploy only) emits the pod template spec (text or structured).
+`--resources` narrows output to per-container resource info (text or structured).
 `--path <keyword>` finds all paths matching the keyword.
-`--az` composes with `--format yaml` (emits `{placements, zoneSummary}`); it is
-mutually exclusive with `--resources` / `--spec` / `--path` since each
+`--az` composes with `-o`/`--output` (emits `{placements, zoneSummary}`); it is
+mutually exclusive with `--resources` / `--deployment-spec` / `--path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--format yaml` | Emit a single yq-safe YAML document (kdiag-shaped) |
-| `--spec` | Emit the pod template spec (deploy only; errors on other kinds) |
-| `--resources` | Narrow output to per-container resource info (text or YAML) |
+| `-o`, `--output <json\|yaml>` | Structured output (kdiag-shaped) |
+| `--deployment-spec` | Emit the pod template spec (deploy only; errors on other kinds) |
+| `--resources` | Narrow output to per-container resource info (text or structured) |
 | `--path <keyword>` | Find all paths matching the keyword in the YAML |
 
 For `inspect deploy`, `--resources` operates on the deployment template (no
@@ -175,13 +177,16 @@ kdiag inspect sts --namespace my-ns my-statefulset
 kdiag inspect rs  --namespace my-ns my-replicaset-abc123
 
 # Deployment summary as YAML (yq-pipeable)
-kdiag inspect deploy my-deployment --format yaml | yq '.pods | length'
+kdiag inspect deploy my-deployment -o yaml | yq '.pods | length'
 
 # Pod template spec as text
-kdiag inspect deploy my-deployment --spec
+kdiag inspect deploy my-deployment --deployment-spec
 
 # Deployment template resources as YAML
 kdiag inspect deploy --resources --namespace my-ns my-deployment
+
+# Deployment template resources as JSON
+kdiag inspect deploy --resources -o json --namespace my-ns my-deployment
 ```
 
 ---
@@ -215,6 +220,9 @@ kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a
 
 # All nodes in the cluster
 kdiag inspect node
+
+# Single node as YAML
+kdiag inspect node my-node -o yaml
 ```
 
 ---
@@ -570,8 +578,8 @@ The binary embeds `version` (from `git describe --tags --always --dirty`),
 `bash` or `zsh`. Scripts cover top-level subcommands (including `help` and
 `completion`), `inspect` kinds, `diff` and `sort` kinds (any kind the
 cluster exposes — built-in or CRD), and per-command flags (`--namespace`,
-`--label`, `--all-namespaces`, `--full`, `--format`, `--resources`,
-`--spec`, `--az`, `--path`).
+`--label`, `--all-namespaces`, `--full`, `-o`/`--output`, `--resources`,
+`--deployment-spec`, `--az`, `--path`).
 
 Namespace and resource names are completed dynamically by querying the
 cluster — for example:

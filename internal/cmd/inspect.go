@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -70,10 +71,10 @@ func RunInspect(args []string) {
 		return
 	}
 
-	// --spec is only valid for the deploy kind. Catch it here so the error
-	// path is uniform regardless of where the flag appears.
-	if hasFlag(handlerArgs, "--spec") && kube.CanonicalKind(kind) != "deployment" {
-		fmt.Fprintln(os.Stderr, "Error: --spec is only valid for `inspect deploy`")
+	// --deployment-spec is only valid for the deploy kind. Catch it here so
+	// the error path is uniform regardless of where the flag appears.
+	if hasFlag(handlerArgs, "--deployment-spec") && kube.CanonicalKind(kind) != "deployment" {
+		fmt.Fprintln(os.Stderr, "Error: --deployment-spec is only valid for `inspect deploy`")
 		os.Exit(1)
 	}
 
@@ -118,7 +119,7 @@ func kindIndex(args []string) int {
 		"--namespace": true, "-n": true,
 		"--label":  true, "-l": true,
 		"--path":   true,
-		"--format": true,
+		"--output": true, "-o": true,
 	}
 	for i := 0; i < len(args); i++ {
 		if valueFlags[args[i]] {
@@ -197,9 +198,10 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 		cli.Fatal(fmt.Errorf("--path requires a non-empty value"))
 	}
 	switch {
-	case unknown == "--format" || strings.HasPrefix(unknown, "--format="),
+	case unknown == "--output" || strings.HasPrefix(unknown, "--output="),
+		unknown == "-o" || strings.HasPrefix(unknown, "-o="),
 		unknown == "--resources",
-		unknown == "--spec",
+		unknown == "--deployment-spec",
 		unknown == "--az":
 		cli.Fatal(fmt.Errorf(
 			"--path is mutually exclusive with %s (each selects a view). "+
@@ -208,7 +210,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 	if unknown != "" {
 		cli.Fatal(fmt.Errorf(
 			"--path: unknown flag %q (only -n/--namespace and -l/--label compose with --path; "+
-				"--format, --resources, --spec, --az are mutually exclusive)", unknown))
+				"-o/--output, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
@@ -327,15 +329,35 @@ func dashIfEmpty(s string) string {
 	return s
 }
 
-// emitYAML marshals v to YAML on stdout. Used wherever --format yaml is set
-// (alone or combined with --resources / --spec) to produce stdout that is
-// valid YAML (yq-pipeable, no banners).
+// emitYAML marshals v to YAML on stdout. Used wherever `-o yaml` is set
+// (alone or combined with --resources / --deployment-spec) to produce
+// stdout that is valid YAML (yq-pipeable, no banners).
 func emitYAML(v any) {
 	y, err := yaml.Marshal(v)
 	if err != nil {
 		cli.Fatal(fmt.Errorf("marshal yaml: %w", err))
 	}
 	fmt.Print(string(y))
+}
+
+// emitJSON marshals v to indented JSON on stdout. Used wherever `-o json`
+// is set. Two-space indent matches kubectl's `-o json` style.
+func emitJSON(v any) {
+	j, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		cli.Fatal(fmt.Errorf("marshal json: %w", err))
+	}
+	fmt.Println(string(j))
+}
+
+// emit dispatches v to the right marshaller based on -o/--output.
+// Only called once the caller has verified output is "json" or "yaml".
+func emit(output string, v any) {
+	if output == "json" {
+		emitJSON(v)
+		return
+	}
+	emitYAML(v)
 }
 
 // hasFlag reports whether name appears in args either as a bare token
