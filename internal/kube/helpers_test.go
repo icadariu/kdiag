@@ -229,6 +229,32 @@ func TestFormatTaints(t *testing.T) {
 	}
 }
 
+func TestFormatAge(t *testing.T) {
+	now := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		t    time.Time
+		want string
+	}{
+		{name: "zero time", t: time.Time{}, want: "0s"},
+		{name: "future", t: now.Add(time.Hour), want: "0s"},
+		{name: "now (equal)", t: now, want: "0s"},
+		{name: "45s", t: now.Add(-45 * time.Second), want: "45s"},
+		{name: "12m (drop seconds)", t: now.Add(-12*time.Minute - 30*time.Second), want: "12m"},
+		{name: "5h31m", t: now.Add(-5*time.Hour - 31*time.Minute), want: "5h31m"},
+		{name: "5h (no minutes)", t: now.Add(-5 * time.Hour), want: "5h"},
+		{name: "3d2h", t: now.Add(-3*24*time.Hour - 2*time.Hour), want: "3d2h"},
+		{name: "7d (no hours)", t: now.Add(-7 * 24 * time.Hour), want: "7d"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := FormatAge(tt.t, now); got != tt.want {
+				t.Errorf("FormatAge() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNodeConditionsSummary(t *testing.T) {
 	conds := []corev1.NodeCondition{
 		{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
