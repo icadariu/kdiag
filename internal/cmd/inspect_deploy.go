@@ -156,14 +156,11 @@ func runInspectDeploy(args []string) {
 	}
 
 	if showSpec {
-		// Synthesize a Pod from the deployment's template so we can reuse the
-		// per-container view collector and renderer.
-		tmplPod := corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: d.Name + " (template)", Namespace: env.Namespace},
-			Spec:       d.Spec.Template.Spec,
-		}
-		fmt.Printf("Deployment: %s (template)\n\n", d.Name)
-		inspectPodObject(tmplPod, *showResources)
+		// Wrap the deployment's template spec in a Pod so we can reuse the
+		// per-container view collector. No pod-level header is emitted since
+		// Node/Pod IP/QoS are meaningless for an unscheduled template.
+		tmplPod := corev1.Pod{Spec: d.Spec.Template.Spec}
+		printContainerBlocks(tmplPod, *showResources)
 		return
 	}
 

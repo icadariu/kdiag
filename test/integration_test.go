@@ -836,6 +836,27 @@ func TestInspectDeploy_Spec_YAML(t *testing.T) {
 	}
 }
 
+// `inspect deploy --deployment-spec` (text mode) emits only the per-container
+// blocks from the deployment's pod template. No "Deployment: ... (template)"
+// header, and no Pod/Node/Pod IP/QoS preamble — a template has no scheduled
+// pod, so those fields would only be dashes. Regression test for #24.
+func TestInspectDeploy_Spec_Text(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "--deployment-spec", "-n", "kdiag-test", "test-app")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	for _, banned := range []string{"(template)", "Pod:", "Node:", "Pod IP:", "QoS:"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("text --deployment-spec should not include %q:\n%s", banned, out)
+		}
+	}
+	for _, want := range []string{"Container:", "Image:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in text --deployment-spec output:\n%s", want, out)
+		}
+	}
+}
+
 // --az + --format yaml emits the AZ view as a YAML doc on a deployment too.
 func TestInspectDeploy_AZ_YAML(t *testing.T) {
 	out, _, code := run("inspect", "deploy", "--az", "-o", "yaml", "-n", "kdiag-test", "test-app")
