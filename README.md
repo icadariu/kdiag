@@ -200,9 +200,10 @@ silently ignored.
 Node summary fields:
 
 - Zone, Instance Type, Kubelet Version
+- Age (e.g. `3d2h`, `5h31m`), Pod CIDR, Unschedulable (cordoned)
 - Taints
 - Conditions: Ready, MemoryPressure, DiskPressure, PIDPressure
-- Allocatable: cpu, memory, pods (and any other resources the node exposes)
+- Allocatable and Capacity: cpu, memory, pods (and any other resources the node exposes)
 
 ```text
 kdiag inspect node [<node-name> | --label <selector>]

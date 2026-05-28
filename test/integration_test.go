@@ -1004,16 +1004,34 @@ func TestInspectNode_All(t *testing.T) {
 		"Zone:",
 		"Instance Type:",
 		"Kubelet Version:",
+		"Age:",
+		"Pod CIDR:",
+		"Unschedulable:",
 		"Taints:",
 		"Conditions:",
 		"Ready:",
 		"Allocatable:",
+		"Capacity:",
 		"cpu:",
 		"memory:",
 		"pods:",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output:\n%s", want, out)
+		}
+	}
+}
+
+// `inspect node -o yaml` includes the new capacity/podCIDR/unschedulable/age
+// keys in the structured payload (#25).
+func TestInspectNode_YAML_NewFields(t *testing.T) {
+	out, _, code := run("inspect", "node", "-o", "yaml")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	for _, want := range []string{"capacity:", "podCIDR:", "unschedulable:", "age:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in YAML output:\n%s", want, out)
 		}
 	}
 }

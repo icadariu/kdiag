@@ -178,7 +178,39 @@ func NodeConditionsSummary(conditions []corev1.NodeCondition) map[string]string 
 	return out
 }
 
-// AllocatableMap converts a node's Allocatable ResourceList into a flat
+// FormatAge renders the duration between t and now using the short suffix
+// style that `kubectl get nodes` uses: largest two non-zero units, max
+// granularity day+hour (e.g. "3d2h", "5h31m", "12m", "45s"). Returns "0s"
+// when t is the zero value or in the future relative to now.
+func FormatAge(t time.Time, now time.Time) string {
+	if t.IsZero() || !t.Before(now) {
+		return "0s"
+	}
+	d := now.Sub(t)
+	days := int(d / (24 * time.Hour))
+	hours := int((d % (24 * time.Hour)) / time.Hour)
+	minutes := int((d % time.Hour) / time.Minute)
+	seconds := int((d % time.Minute) / time.Second)
+	switch {
+	case days > 0:
+		if hours > 0 {
+			return fmt.Sprintf("%dd%dh", days, hours)
+		}
+		return fmt.Sprintf("%dd", days)
+	case hours > 0:
+		if minutes > 0 {
+			return fmt.Sprintf("%dh%dm", hours, minutes)
+		}
+		return fmt.Sprintf("%dh", hours)
+	case minutes > 0:
+		return fmt.Sprintf("%dm", minutes)
+	default:
+		return fmt.Sprintf("%ds", seconds)
+	}
+}
+
+// AllocatableMap converts a Kubernetes ResourceList (used for a node's
+// Allocatable or Capacity, and for container Requests/Limits) into a flat
 // string map for printing.
 func AllocatableMap(rl corev1.ResourceList) map[string]string {
 	out := make(map[string]string, len(rl))

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -125,9 +126,13 @@ type nodeInfo struct {
 	Zone           string            `json:"zone,omitempty"`
 	InstanceType   string            `json:"instanceType,omitempty"`
 	KubeletVersion string            `json:"kubeletVersion,omitempty"`
+	Age            string            `json:"age,omitempty"`
+	PodCIDR        string            `json:"podCIDR,omitempty"`
+	Unschedulable  bool              `json:"unschedulable"`
 	Taints         []string          `json:"taints,omitempty"`
 	Conditions     map[string]string `json:"conditions,omitempty"`
 	Allocatable    map[string]string `json:"allocatable,omitempty"`
+	Capacity       map[string]string `json:"capacity,omitempty"`
 }
 
 func nodeInfoFrom(n corev1.Node) nodeInfo {
@@ -140,24 +145,34 @@ func nodeInfoFrom(n corev1.Node) nodeInfo {
 		Zone:           kube.ZoneForNodeLabels(n.Labels),
 		InstanceType:   kube.InstanceTypeForNodeLabels(n.Labels),
 		KubeletVersion: n.Status.NodeInfo.KubeletVersion,
+		Age:            kube.FormatAge(n.CreationTimestamp.Time, time.Now()),
+		PodCIDR:        dashIfEmpty(n.Spec.PodCIDR),
+		Unschedulable:  n.Spec.Unschedulable,
 		Taints:         taints,
 		Conditions:     kube.NodeConditionsSummary(n.Status.Conditions),
 		Allocatable:    kube.AllocatableMap(n.Status.Allocatable),
+		Capacity:       kube.AllocatableMap(n.Status.Capacity),
 	}
 }
 
 // printNodeBlock renders the per-node summary: zone, instance type, kubelet,
-// taints, conditions, and allocatable.
+// age, pod CIDR, schedulability, taints, conditions, allocatable, and
+// capacity.
 func printNodeBlock(n corev1.Node) {
 	fmt.Printf("Node: %s\n", n.Name)
 	fmt.Printf("  Zone:            %s\n", kube.ZoneForNodeLabels(n.Labels))
 	fmt.Printf("  Instance Type:   %s\n", kube.InstanceTypeForNodeLabels(n.Labels))
 	fmt.Printf("  Kubelet Version: %s\n", n.Status.NodeInfo.KubeletVersion)
+	fmt.Printf("  Age:             %s\n", kube.FormatAge(n.CreationTimestamp.Time, time.Now()))
+	fmt.Printf("  Pod CIDR:        %s\n", dashIfEmpty(n.Spec.PodCIDR))
+	fmt.Printf("  Unschedulable:   %t\n", n.Spec.Unschedulable)
 	fmt.Printf("  Taints:          %s\n", kube.FormatTaints(n.Spec.Taints))
 	fmt.Println("  Conditions:")
 	cli.PrintKVBlock(os.Stdout, "    ", kube.NodeConditionsSummary(n.Status.Conditions))
 	fmt.Println("  Allocatable:")
 	cli.PrintKVBlock(os.Stdout, "    ", kube.AllocatableMap(n.Status.Allocatable))
+	fmt.Println("  Capacity:")
+	cli.PrintKVBlock(os.Stdout, "    ", kube.AllocatableMap(n.Status.Capacity))
 }
 
 func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
