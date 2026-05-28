@@ -237,9 +237,9 @@ func commonFlags(fs *pflag.FlagSet) (*kube.KubeFlags, *bool) {
 	return &k, &showResources
 }
 
-// inspectPodObject renders the pod-level summary plus the per-container blocks
-// for a single pod. Header (Pod: <name>, Node, Pod IP, QoS) is always printed —
-// callers should not also print "Pod: <name>".
+// inspectPodObject renders the pod-level summary (Pod: <name>, Node, Pod IP,
+// QoS) plus the per-container blocks for a single pod. Callers should not
+// also print "Pod: <name>".
 func inspectPodObject(podObj corev1.Pod, showResources bool) {
 	if !showResources {
 		fmt.Printf("Pod: %s\n", podObj.Name)
@@ -249,6 +249,13 @@ func inspectPodObject(podObj corev1.Pod, showResources bool) {
 		fmt.Println()
 	}
 
+	printContainerBlocks(podObj, showResources)
+}
+
+// printContainerBlocks renders only the per-container section for a pod, with
+// no Pod-level preamble. Used directly by the deployment template view, which
+// has no Node/Pod IP/QoS to show.
+func printContainerBlocks(podObj corev1.Pod, showResources bool) {
 	views := kube.CollectContainerViews(&podObj)
 	if len(views) == 0 {
 		fmt.Println("No containers found.")
