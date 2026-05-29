@@ -1096,6 +1096,83 @@ func TestInspectNode_NotFound(t *testing.T) {
 	}
 }
 
+// `inspect node --pods` lists the non-terminated pods on each node with a
+// resources table and an allocated-resources summary.
+func TestInspectNode_Pods_Text(t *testing.T) {
+	out, _, code := run("inspect", "node", "--pods")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	for _, want := range []string{
+		"Node:",
+		"Non-terminated Pods:",
+		"NAMESPACE",
+		"CPU REQUESTS",
+		"MEMORY LIMITS",
+		"AGE",
+		"Allocated resources:",
+		"CPU Requests:",
+		"Memory Limits:",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output:\n%s", want, out)
+		}
+	}
+	// kind always runs kube-proxy on every node; it should appear in the table.
+	if !strings.Contains(out, "kube-proxy") {
+		t.Errorf("expected a kube-proxy pod in the table:\n%s", out)
+	}
+	// The plain node-summary fields must NOT appear (--pods replaces that view).
+	if strings.Contains(out, "Kubelet Version:") {
+		t.Errorf("--pods should replace the node summary block:\n%s", out)
+	}
+}
+
+// `inspect node --pods -o json` emits a structured per-node document.
+func TestInspectNode_Pods_JSON(t *testing.T) {
+	out, _, code := run("inspect", "node", "--pods", "-o", "json")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\noutput: %s", code, out)
+	}
+	var views []struct {
+		Node      string `json:"node"`
+		Total     int    `json:"total"`
+		Pods      []struct {
+			Namespace   string `json:"namespace"`
+			Name        string `json:"name"`
+			CPURequests string `json:"cpuRequests"`
+		} `json:"pods"`
+		Allocated struct {
+			CPU struct {
+				RequestsPercent int `json:"requestsPercent"`
+			} `json:"cpu"`
+		} `json:"allocated"`
+	}
+	if err := json.Unmarshal([]byte(out), &views); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v\nstdout: %s", err, out)
+	}
+	if len(views) == 0 {
+		t.Fatalf("expected at least one node view:\n%s", out)
+	}
+	if views[0].Node == "" {
+		t.Errorf("expected a node name in the first view:\n%s", out)
+	}
+	if views[0].Total != len(views[0].Pods) {
+		t.Errorf("total (%d) should equal len(pods) (%d)", views[0].Total, len(views[0].Pods))
+	}
+}
+
+// `inspect <kind> --pods` for a non-node kind is rejected with a clear error.
+func TestInspectPods_WrongKind(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "--pods", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit for --pods on a non-node kind")
+	}
+	if !strings.Contains(errOut, "--pods is only valid for") {
+		t.Errorf("expected '--pods is only valid for' error:\n%s", errOut)
+	}
+}
+
 // Unknown inspect kind exits non-zero with a clear error.
 func TestInspect_UnknownKind(t *testing.T) {
 	_, errOut, code := run("inspect", "thingamajig", "foo")

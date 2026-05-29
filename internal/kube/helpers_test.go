@@ -503,3 +503,104 @@ func TestCollectContainerViews_EmptyAndNoInit(t *testing.T) {
 		t.Fatalf("empty pod should yield no views, got %d", len(views))
 	}
 }
+
+func TestIsPodTerminated(t *testing.T) {
+	tests := []struct {
+		phase corev1.PodPhase
+		want  bool
+	}{
+		{corev1.PodRunning, false},
+		{corev1.PodPending, false},
+		{corev1.PodUnknown, false},
+		{corev1.PodSucceeded, true},
+		{corev1.PodFailed, true},
+	}
+	for _, c := range tests {
+		p := corev1.Pod{Status: corev1.PodStatus{Phase: c.phase}}
+		if got := IsPodTerminated(p); got != c.want {
+			t.Errorf("IsPodTerminated(%s) = %v, want %v", c.phase, got, c.want)
+		}
+	}
+}
+
+func TestSumPodResources(t *testing.T) {
+	pod := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("50Mi"),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("200m"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						},
+					},
+				},
+				{
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("50m"),
+							corev1.ResourceMemory: resource.MustParse("10Mi"),
+						},
+					},
+				},
+			},
+		},
+	}
+	got := SumPodResources(pod)
+	if got.CPUReq.MilliValue() != 150 {
+		t.Errorf("CPUReq = %s, want 150m", got.CPUReq.String())
+	}
+	if got.CPULim.MilliValue() != 200 {
+		t.Errorf("CPULim = %s, want 200m", got.CPULim.String())
+	}
+	if got.MemReq.Value() != 60*1024*1024 {
+		t.Errorf("MemReq = %s, want 60Mi", got.MemReq.String())
+	}
+	if got.MemLim.Value() != 100*1024*1024 {
+		t.Errorf("MemLim = %s, want 100Mi", got.MemLim.String())
+	}
+
+	empty := SumPodResources(corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{}}}})
+	if !empty.CPUReq.IsZero() || !empty.MemLim.IsZero() {
+		t.Errorf("empty containers should sum to zero, got %+v", empty)
+	}
+}
+
+func TestPercentOf(t *testing.T) {
+	tests := []struct {
+		name        string
+		q, total    resource.Quantity
+		want        int
+	}{
+		{"half", resource.MustParse("500m"), resource.MustParse("1"), 50},
+		{"truncates", resource.MustParse("1m"), resource.MustParse("1"), 0},
+		{"zero total", resource.MustParse("100m"), resource.Quantity{}, 0},
+		{"zero q", resource.Quantity{}, resource.MustParse("1"), 0},
+		{"memory ratio", resource.MustParse("50Mi"), resource.MustParse("100Mi"), 50},
+	}
+	for _, c := range tests {
+		if got := PercentOf(c.q, c.total); got != c.want {
+			t.Errorf("%s: PercentOf(%s, %s) = %d, want %d", c.name, c.q.String(), c.total.String(), got, c.want)
+		}
+	}
+}
+
+func TestFormatQtyPct(t *testing.T) {
+	tests := []struct {
+		q, total resource.Quantity
+		want     string
+	}{
+		{resource.MustParse("100m"), resource.MustParse("1"), "100m (10%)"},
+		{resource.Quantity{}, resource.MustParse("1"), "0 (0%)"},
+		{resource.MustParse("50Mi"), resource.MustParse("100Mi"), "50Mi (50%)"},
+	}
+	for _, c := range tests {
+		if got := FormatQtyPct(c.q, c.total); got != c.want {
+			t.Errorf("FormatQtyPct(%s, %s) = %q, want %q", c.q.String(), c.total.String(), got, c.want)
+		}
+	}
+}

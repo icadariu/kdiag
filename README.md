@@ -205,9 +205,17 @@ Node summary fields:
 - Conditions: Ready, MemoryPressure, DiskPressure, PIDPressure
 - Allocatable and Capacity: cpu, memory, pods (and any other resources the node exposes)
 
+`--pods` switches to a `kubectl describe node`-style view: it replaces the
+summary block with the **non-terminated pods** scheduled on the node (across all
+namespaces), showing each pod's CPU/memory requests & limits as a percentage of
+node allocatable, plus an "Allocated resources" totals summary. It composes with
+`-o`/`--output` (per-pod rows carry plain quantity strings; the node's
+`allocatable` and an `allocated` percentage summary are included so consumers can
+recompute). `--pods` is mutually exclusive with `--path`.
+
 ```text
-kdiag inspect node [<node-name> | --label <selector>]
-kdiag inspect no   [<node-name> | --label <selector>]
+kdiag inspect node [<node-name> | --label <selector>] [--pods]
+kdiag inspect no   [<node-name> | --label <selector>] [--pods]
 ```
 
 ### `inspect node` examples
@@ -224,6 +232,12 @@ kdiag inspect node
 
 # Single node as YAML
 kdiag inspect node my-node -o yaml
+
+# Non-terminated pods on a node, with resource requests/limits
+kdiag inspect node my-node --pods
+
+# Same, as a structured document
+kdiag inspect node my-node --pods -o json
 ```
 
 ---

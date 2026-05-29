@@ -78,6 +78,13 @@ func RunInspect(args []string) {
 		os.Exit(1)
 	}
 
+	// --pods is only valid for the node kind. Catch it here so the error path
+	// is uniform regardless of where the flag appears.
+	if hasFlag(handlerArgs, "--pods") && kube.CanonicalKind(kind) != "node" {
+		fmt.Fprintln(os.Stderr, "Error: --pods is only valid for `inspect node`")
+		os.Exit(1)
+	}
+
 	// --path short-circuits the per-kind handlers with a generic
 	// dynamic-client walker. Parsing happens here (rather than in commonFlags)
 	// because the walker is kind-agnostic and we want CRD support.

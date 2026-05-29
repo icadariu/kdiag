@@ -138,6 +138,7 @@ _kdiag() {
             --resources)         view_seen=resources ;;
             --deployment-spec)   view_seen=spec ;;
             --az)                view_seen=az ;;
+            --pods)              view_seen=pods ;;
         esac
     done
 
@@ -147,7 +148,8 @@ _kdiag() {
         resources)  inspect_flags="${shared_flags} --resources --az --output -o" ;;
         spec)       inspect_flags="${shared_flags} --deployment-spec --output -o" ;;
         az)         inspect_flags="${shared_flags} --az --output -o" ;;
-        *)          inspect_flags="${shared_flags} --resources --az --deployment-spec --output -o --path" ;;
+        pods)       inspect_flags="${shared_flags} --pods --output -o" ;;
+        *)          inspect_flags="${shared_flags} --resources --az --deployment-spec --pods --output -o --path" ;;
     esac
 
     case "${cmd}" in
