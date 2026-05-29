@@ -35,6 +35,7 @@ func TestBashCompletion_ViewFlagFiltering(t *testing.T) {
 		"view_seen=resources",
 		"view_seen=spec",
 		"view_seen=az",
+		"view_seen=pods",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("bash script missing %q", want)
@@ -63,10 +64,28 @@ func TestZshCompletion_ViewFlagFiltering(t *testing.T) {
 		"view_seen=resources",
 		"view_seen=spec",
 		"view_seen=az",
+		"view_seen=pods",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("zsh script missing %q", want)
 		}
+	}
+}
+
+// `--pods` must reach the node completion path in both shells. bash is not
+// kind-aware (one union for every kind), so a single occurrence suffices. zsh
+// IS kind-aware: it needs `--pods` both in the pre-kind union AND in the
+// per-kind `node)` kflags block — hence at least two occurrences. A drop to one
+// means the node-block entry was removed and `inspect node -<TAB>` would stop
+// offering `--pods`.
+func TestCompletion_NodePodsFlag(t *testing.T) {
+	bash := readCompletionScript(t, "completions/kdiag.bash")
+	if !strings.Contains(bash, "--pods") {
+		t.Errorf("bash script missing --pods")
+	}
+	zsh := readCompletionScript(t, "completions/kdiag.zsh")
+	if n := strings.Count(zsh, "--pods["); n < 2 {
+		t.Errorf("zsh script has %d --pods entries, want >=2 (union + node kflags block)", n)
 	}
 }
 

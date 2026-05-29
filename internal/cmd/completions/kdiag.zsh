@@ -173,6 +173,7 @@ _kdiag() {
             --resources)  view_seen=resources ;;
             --deployment-spec)       view_seen=spec ;;
             --az)         view_seen=az ;;
+            --pods)       view_seen=pods ;;
         esac
     done
 
@@ -243,6 +244,13 @@ _kdiag() {
                 '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
             )
             ;;
+        pods)
+            inspect_flags=(
+                $shared_flags
+                '--pods[node: list non-terminated pods with resource usage]'
+                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+            )
+            ;;
         *)
             inspect_flags=(
                 $shared_flags
@@ -251,6 +259,7 @@ _kdiag() {
                 '--path[Walk YAML and print yq paths matching a key or value]'
                 '--az[Show availability-zone placement]'
                 '--deployment-spec[deploy: print .spec.template.spec (structured)]'
+                '--pods[node: list non-terminated pods with resource usage]'
             )
             ;;
     esac
@@ -418,6 +427,7 @@ _kdiag() {
                                 kflags=(
                                     $shared_flags
                                     '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                    '--pods[node: list non-terminated pods with resource usage]'
                                 )
                                 ;;
                             *)

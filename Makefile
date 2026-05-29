@@ -24,7 +24,9 @@ GOFLAGS    ?=
 # Where to drop persisted shell-completion files. Override on the command line
 # if your fpath / completion dir is elsewhere, e.g.:
 #   make autocompletion ZSH_COMPLETIONS_DIR=~/.zfunc
-ZSH_COMPLETIONS_DIR  ?= $(HOME)/.oh-my-zsh/plugins/kube-ps1
+# The zsh dir must be on your fpath before compinit runs — add this to .zshrc:
+#   fpath=(~/.zsh/completions $fpath)
+ZSH_COMPLETIONS_DIR  ?= $(HOME)/.zsh/completions
 BASH_COMPLETIONS_DIR ?= $(HOME)/.local/share/bash-completion/completions
 
 ## help: show available make targets

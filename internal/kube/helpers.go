@@ -6,6 +6,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -236,6 +237,62 @@ func ResourcesForContainer(containers []corev1.Container, name string) (map[stri
 		return req, lim
 	}
 	return map[string]string{}, map[string]string{}
+}
+
+// IsPodTerminated reports whether a pod has reached a terminal phase
+// (Succeeded or Failed). "Non-terminated" pods are everything else — matching
+// kubectl's `status.phase!=Succeeded,status.phase!=Failed` node-pod filter.
+func IsPodTerminated(p corev1.Pod) bool {
+	return p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed
+}
+
+// PodResources holds a pod's summed CPU/memory requests and limits.
+type PodResources struct {
+	CPUReq resource.Quantity
+	CPULim resource.Quantity
+	MemReq resource.Quantity
+	MemLim resource.Quantity
+}
+
+// SumPodResources sums CPU/memory requests and limits across a pod's regular
+// containers (.spec.containers). Init and sidecar containers are NOT folded in,
+// so this is an approximation of kubectl's pod-level effective resources — good
+// enough for a per-node overview, where regular-container requests dominate.
+func SumPodResources(p corev1.Pod) PodResources {
+	var r PodResources
+	for _, c := range p.Spec.Containers {
+		if q, ok := c.Resources.Requests[corev1.ResourceCPU]; ok {
+			r.CPUReq.Add(q)
+		}
+		if q, ok := c.Resources.Limits[corev1.ResourceCPU]; ok {
+			r.CPULim.Add(q)
+		}
+		if q, ok := c.Resources.Requests[corev1.ResourceMemory]; ok {
+			r.MemReq.Add(q)
+		}
+		if q, ok := c.Resources.Limits[corev1.ResourceMemory]; ok {
+			r.MemLim.Add(q)
+		}
+	}
+	return r
+}
+
+// PercentOf returns q as an integer percentage of total, truncated toward zero.
+// Returns 0 when total is zero (e.g. allocatable unknown), avoiding a divide by
+// zero. Both quantities are compared via MilliValue so the ratio is correct for
+// CPU and memory alike.
+func PercentOf(q, total resource.Quantity) int {
+	t := total.MilliValue()
+	if t == 0 {
+		return 0
+	}
+	return int(q.MilliValue() * 100 / t)
+}
+
+// FormatQtyPct renders a quantity with its percentage of total, e.g.
+// "100m (10%)". A zero quantity renders "0 (0%)".
+func FormatQtyPct(q, total resource.Quantity) string {
+	return fmt.Sprintf("%s (%d%%)", q.String(), PercentOf(q, total))
 }
 
 // ResourcesFromSpec returns (requests, limits) as map[string]string for a
