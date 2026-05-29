@@ -23,10 +23,10 @@ GOFLAGS    ?=
 
 # Where to drop persisted shell-completion files. Override on the command line
 # if your fpath / completion dir is elsewhere, e.g.:
-#   make autocompletion ZSH_COMPLETIONS_DIR=~/.zfunc
+#   make autocompletion ZSH_COMPLETIONS_DIR=~/.zsh/completions
 # The zsh dir must be on your fpath before compinit runs — add this to .zshrc:
-#   fpath=(~/.zsh/completions $fpath)
-ZSH_COMPLETIONS_DIR  ?= $(HOME)/.zsh/completions
+#   fpath=(~/.zfunc $fpath)
+ZSH_COMPLETIONS_DIR  ?= $(HOME)/.zfunc
 BASH_COMPLETIONS_DIR ?= $(HOME)/.local/share/bash-completion/completions
 
 ## help: show available make targets
