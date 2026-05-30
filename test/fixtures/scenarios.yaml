@@ -1,0 +1,221 @@
+# Manual-testing scenarios for kdiag, organised by namespace per theme. Applied
+# by `make cluster-up` (best-effort — many of these pods are DELIBERATELY broken
+# and will never become Ready, so cluster-up does not wait on them).
+#
+#   kdiag-scheduling  → `inspect pod --troubleshoot` (unschedulable pods)
+#   kdiag-runtime     → `inspect pod --troubleshoot` (crashloop/imagepull/oom/not-ready)
+#   kdiag-workloads   → `inspect deploy|ds|sts --troubleshoot`, `inspect ... --resources/--az`
+#
+# This file is NOT used by the integration tests (those use kdiag-test.yaml); it
+# exists purely so a freshly-created cluster is a ready playground.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-scheduling
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-runtime
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-workloads
+# ── kdiag-scheduling ─────────────────────────────────────────────────────────
+---
+# Unschedulable: nodeSelector matches no node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sched-nodeselector
+  namespace: kdiag-scheduling
+  labels: { app: sched-nodeselector }
+spec:
+  nodeSelector:
+    kdiag.test/nonexistent: "true"
+  containers:
+    - name: app
+      image: nginx:alpine
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+---
+# Unschedulable: cpu request exceeds any node's allocatable.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sched-cpu
+  namespace: kdiag-scheduling
+  labels: { app: sched-cpu }
+spec:
+  containers:
+    - name: hog
+      image: nginx:alpine
+      resources:
+        requests: { cpu: "100", memory: 16Mi }
+---
+# Unschedulable by a taint: targets the zone-c worker (kdiag-test-worker3),
+# which `make cluster-up` cordons and taints dedicated=special:NoSchedule. This
+# pod has no matching toleration, so worker3 rejects it on the taint while every
+# other node fails the zone selector.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sched-taint
+  namespace: kdiag-scheduling
+  labels: { app: sched-taint }
+spec:
+  nodeSelector:
+    topology.kubernetes.io/zone: zone-c
+  containers:
+    - name: app
+      image: nginx:alpine
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+# ── kdiag-runtime ────────────────────────────────────────────────────────────
+---
+# CrashLoopBackOff: exits non-zero immediately, restarts forever.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rt-crashloop
+  namespace: kdiag-runtime
+  labels: { app: rt-crashloop }
+spec:
+  restartPolicy: Always
+  containers:
+    - name: crasher
+      image: busybox:latest
+      command: ["sh", "-c", "echo starting; sleep 2; exit 1"]
+---
+# ImagePullBackOff: the tag does not exist.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rt-imagepull
+  namespace: kdiag-runtime
+  labels: { app: rt-imagepull }
+spec:
+  containers:
+    - name: app
+      image: nginx:this-tag-does-not-exist-kdiag
+---
+# OOMKilled: fills tmpfs (/dev/shm, counts against the memory cgroup) past the
+# 32Mi limit, so the kernel OOM-kills it; restartPolicy Always makes it loop.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rt-oom
+  namespace: kdiag-runtime
+  labels: { app: rt-oom }
+spec:
+  restartPolicy: Always
+  containers:
+    - name: hog
+      image: busybox:latest
+      command: ["sh", "-c", "dd if=/dev/zero of=/dev/shm/fill bs=1M count=128; sleep 3600"]
+      resources:
+        limits: { memory: 32Mi }
+---
+# Running but never Ready: the readiness probe always fails.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rt-notready
+  namespace: kdiag-runtime
+  labels: { app: rt-notready }
+spec:
+  containers:
+    - name: app
+      image: nginx:alpine
+      readinessProbe:
+        exec:
+          command: ["false"]
+        periodSeconds: 5
+# ── kdiag-workloads ──────────────────────────────────────────────────────────
+---
+# Healthy deployment (2/2 ready) — `inspect deploy --troubleshoot` → Healthy.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wl-healthy
+  namespace: kdiag-workloads
+  labels: { app: wl-healthy }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: wl-healthy }
+  template:
+    metadata:
+      labels: { app: wl-healthy }
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+---
+# Degraded deployment: image tag does not exist, so no pod becomes ready —
+# `inspect deploy --troubleshoot` → Degraded with per-pod ImagePullBackOff.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wl-degraded
+  namespace: kdiag-workloads
+  labels: { app: wl-degraded }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: wl-degraded }
+  template:
+    metadata:
+      labels: { app: wl-degraded }
+    spec:
+      containers:
+        - name: app
+          image: nginx:this-tag-does-not-exist-kdiag
+---
+# Healthy DaemonSet (one pod per schedulable node) — `inspect ds --troubleshoot`.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wl-ds
+  namespace: kdiag-workloads
+  labels: { app: wl-ds }
+spec:
+  selector:
+    matchLabels: { app: wl-ds }
+  template:
+    metadata:
+      labels: { app: wl-ds }
+    spec:
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: app
+          image: nginx:alpine
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+---
+# Healthy StatefulSet — `inspect sts --troubleshoot`.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wl-sts
+  namespace: kdiag-workloads
+  labels: { app: wl-sts }
+spec:
+  serviceName: wl-sts
+  replicas: 2
+  selector:
+    matchLabels: { app: wl-sts }
+  template:
+    metadata:
+      labels: { app: wl-sts }
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }

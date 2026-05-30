@@ -68,8 +68,8 @@ func runInspectPod(args []string) {
 		os.Exit(1)
 	}
 
-	// --resources, --az (and --spec on deploy) are view selectors — at most
-	// one may be chosen. --format is orthogonal and composes with any view.
+	// --resources, --az are view selectors — at most one may be chosen.
+	// --yaml is orthogonal and composes with any view.
 	if *showResources && showAZ {
 		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)

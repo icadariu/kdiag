@@ -84,6 +84,19 @@ func RunInspect(args []string) {
 		os.Exit(1)
 	}
 
+	// --troubleshoot short-circuits the per-kind handlers with a kind-aware
+	// diagnostic (scheduling + runtime for pods, managed-pod drill-down for
+	// workloads, health for nodes). Handled centrally so every kind gets it,
+	// like --path. It composes with --yaml but with no other view.
+	if name, selector, ns, asYAML, ok := extractTroubleshootArgs(handlerArgs); ok {
+		env, err := kube.NewKubeEnv(kube.KubeFlags{Namespace: ns})
+		if err != nil {
+			cli.Fatal(err)
+		}
+		runInspectTroubleshoot(env, kind, name, selector, asYAML)
+		return
+	}
+
 	// --path short-circuits the per-kind handlers with a generic
 	// dynamic-client walker. Parsing happens here (rather than in commonFlags)
 	// because the walker is kind-agnostic and we want CRD support.
@@ -203,7 +216,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 		cli.Fatal(fmt.Errorf("--path requires a non-empty value"))
 	}
 	switch unknown {
-	case "--yaml", "--resources", "--deployment-spec", "--az":
+	case "--yaml", "--resources", "--deployment-spec", "--az", "--troubleshoot":
 		cli.Fatal(fmt.Errorf(
 			"--path is mutually exclusive with %s (each selects a view). "+
 				"Drop one of them, or run `kdiag inspect <kind> -h` for usage.", unknown))
@@ -211,7 +224,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 	if unknown != "" {
 		cli.Fatal(fmt.Errorf(
 			"--path: unknown flag %q (only -n/--namespace and -l/--label compose with --path; "+
-				"--yaml, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
+				"--yaml, --resources, --deployment-spec, --az, --troubleshoot are mutually exclusive)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))

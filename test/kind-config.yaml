@@ -1,0 +1,14 @@
+# Multi-node kind cluster for kdiag manual testing and integration tests.
+# One control-plane + three workers. In a MULTI-node kind cluster the
+# control-plane keeps its NoSchedule taint, so normal pods only land on workers.
+# `make cluster-up` labels the workers with distinct zones/instance types (so
+# --az is meaningful), keeps worker + worker2 schedulable (runtime/workload
+# scenarios + zone spread land there), and turns worker3 into the "broken node"
+# demo (cordoned + tainted) for `inspect node --troubleshoot`.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker

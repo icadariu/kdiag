@@ -324,6 +324,7 @@ func TestViewFlagSeen(t *testing.T) {
 		{"resources", []string{"--resources"}, "resources"},
 		{"deployment-spec", []string{"--deployment-spec"}, "deployment-spec"},
 		{"az", []string{"--az"}, "az"},
+		{"troubleshoot", []string{"--troubleshoot"}, "troubleshoot"},
 		{"first wins when multiple present", []string{"--resources", "--az"}, "resources"},
 		{"path wins when first", []string{"--path", "x", "--resources"}, "path"},
 	}
@@ -340,7 +341,7 @@ func TestPrintInspectUsage_NoViewShowsAll(t *testing.T) {
 	var b bytes.Buffer
 	PrintInspectUsage(&b, nil)
 	out := b.String()
-	for _, flag := range []string{"--path", "--yaml", "--resources", "--deployment-spec", "--az"} {
+	for _, flag := range []string{"--path", "--yaml", "--resources", "--deployment-spec", "--az", "--troubleshoot"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}
