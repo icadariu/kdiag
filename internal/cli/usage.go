@@ -139,6 +139,10 @@ Flags:
                          --resources / --deployment-spec / --path (each selects a view).
 `)
 	}
+	if showTroubleshoot(seen) {
+		fmt.Fprintln(w, "  --troubleshoot         Diagnose problems (any kind): pod scheduling/runtime, workload")
+		fmt.Fprintln(w, "                         replica health, or node health (text or structured)")
+	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Examples:")
 	for _, ex := range inspectExamples(seen) {
@@ -155,11 +159,12 @@ Flags:
 //	resources        → show --resources, --yaml, --az; hide --path, --deployment-spec
 //	deployment-spec  → show --deployment-spec, --yaml; hide --path, --resources, --az
 //	az               → show --az, --yaml; hide --path, --resources, --deployment-spec
-func showPath(seen string) bool      { return seen == "" || seen == "path" }
-func showFormat(seen string) bool    { return seen != "path" }
-func showResources(seen string) bool { return seen == "" || seen == "resources" }
-func showSpec(seen string) bool      { return seen == "" || seen == "deployment-spec" }
-func showAZ(seen string) bool        { return seen == "" || seen == "az" || seen == "resources" }
+func showPath(seen string) bool         { return seen == "" || seen == "path" }
+func showFormat(seen string) bool       { return seen != "path" }
+func showResources(seen string) bool    { return seen == "" || seen == "resources" }
+func showSpec(seen string) bool         { return seen == "" || seen == "deployment-spec" }
+func showAZ(seen string) bool           { return seen == "" || seen == "az" || seen == "resources" }
+func showTroubleshoot(seen string) bool { return seen == "" || seen == "troubleshoot" }
 
 func inspectExamples(seen string) []string {
 	switch seen {
@@ -352,9 +357,9 @@ Examples:
 }
 
 // ViewFlagSeen scans args for the first view-selector flag and returns its
-// short name ("path", "resources", "deployment-spec", "az") or "" if none is
-// present. Accepts both the space-separated form (--path x) and the inline
-// form (--path=x). Used by help printers and the completion scripts
+// short name ("path", "resources", "deployment-spec", "az", "troubleshoot") or
+// "" if none is present. Accepts both the space-separated form (--path x) and
+// the inline form (--path=x). Used by help printers and the completion scripts
 // (transitively) to filter what gets suggested once a view is set.
 func ViewFlagSeen(args []string) string {
 	for _, a := range args {
@@ -367,6 +372,8 @@ func ViewFlagSeen(args []string) string {
 			return "deployment-spec"
 		case a == "--az":
 			return "az"
+		case a == "--troubleshoot":
+			return "troubleshoot"
 		}
 	}
 	return ""

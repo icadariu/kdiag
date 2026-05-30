@@ -59,8 +59,25 @@ After any code change:
 
 ## Test fixtures
 
-`test/fixtures/kdiag-test.yaml` creates namespace `kdiag-test` with:
+`make cluster-up` creates a 4-node kind cluster (`test/kind-config.yaml`: 1
+control-plane + 3 workers). worker/worker2 are labelled with zones + instance
+types and stay schedulable; worker3 is cordoned + tainted as a broken-node demo.
+
+`test/fixtures/kdiag-test.yaml` creates namespace `kdiag-test` (used by the
+integration tests) with:
 
 - A deployment (`app=test-app`) for label-selector tests.
 - A static pod `kdiag-static` for single-pod tests.
 - A crashing pod to exercise terminated/waiting container states.
+- `kdiag-unschedulable` for `inspect pod --troubleshoot` scheduling tests.
+
+`test/fixtures/scenarios.yaml` is a separate manual-testing playground (NOT used
+by integration tests) with `kdiag-scheduling` / `kdiag-runtime` /
+`kdiag-workloads` namespaces of healthy + deliberately-broken resources for
+exercising `--troubleshoot` by hand.
+
+`--troubleshoot` is a universal `inspect` view handled centrally in the
+`RunInspect` dispatcher (like `--path`): `internal/cmd/inspect_troubleshoot.go`
+orchestrates and renders; pure diagnostics live in `internal/kube/diagnose.go`
+(runtime/node) and `internal/kube/schedule.go` (scheduling predicates), both
+unit-tested.

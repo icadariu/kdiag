@@ -1,6 +1,14 @@
 CLUSTER_NAME    = kdiag-test
 KUBECONFIG_FILE = /tmp/kdiag-test.kubeconfig
 FIXTURES        = test/fixtures/kdiag-test.yaml
+SCENARIOS       = test/fixtures/scenarios.yaml
+KIND_CONFIG     = test/kind-config.yaml
+# kind names workers <cluster>-worker, <cluster>-worker2, <cluster>-worker3.
+# worker/worker2 stay schedulable; worker3 is the cordoned+tainted "broken node".
+WORKER_A        = $(CLUSTER_NAME)-worker
+WORKER_B        = $(CLUSTER_NAME)-worker2
+WORKER_C        = $(CLUSTER_NAME)-worker3
+KUBECTL         = KUBECONFIG=$(KUBECONFIG_FILE) kubectl
 
 BIN        = kdiag
 CMD_PKG    = .
@@ -52,10 +60,16 @@ autocompletion: build
 unit-tests:
 	go test ./internal/...
 
-## cluster-up: create a kind cluster and apply test fixtures
+## cluster-up: create a 3-node kind cluster, apply CI fixtures + manual scenarios
 cluster-up:
-	kind create cluster --name $(CLUSTER_NAME) --kubeconfig $(KUBECONFIG_FILE)
-	KUBECONFIG=$(KUBECONFIG_FILE) kubectl create namespace kdiag-test
+	kind create cluster --name $(CLUSTER_NAME) --kubeconfig $(KUBECONFIG_FILE) --config $(KIND_CONFIG)
+	@echo "Waiting for all nodes to be Ready..."
+	$(KUBECTL) wait --for=condition=Ready nodes --all --timeout=120s
+	@echo "Labelling workers with zones + instance types (so --az is meaningful)..."
+	$(KUBECTL) label node $(WORKER_A) topology.kubernetes.io/zone=zone-a node.kubernetes.io/instance-type=kdiag.large --overwrite
+	$(KUBECTL) label node $(WORKER_B) topology.kubernetes.io/zone=zone-b node.kubernetes.io/instance-type=kdiag.small --overwrite
+	$(KUBECTL) label node $(WORKER_C) topology.kubernetes.io/zone=zone-c node.kubernetes.io/instance-type=kdiag.medium --overwrite
+	$(KUBECTL) create namespace kdiag-test
 	@echo "Waiting for default service account..."
 	@until KUBECONFIG=$(KUBECONFIG_FILE) kubectl get serviceaccount default -n kdiag-test >/dev/null 2>&1; do sleep 1; done
 	@# First apply lands the CRD (and most other resources). The Widget CR
@@ -93,7 +107,19 @@ cluster-up:
 	  -p '{"spec":{"template":{"metadata":{"annotations":{"kdiag-rollout":"v3"}}}}}'
 	KUBECONFIG=$(KUBECONFIG_FILE) kubectl rollout status deployment/test-app \
 	  -n kdiag-test --timeout=60s
-	@echo "Cluster ready."
+	@echo "Setting up the broken-node scenario (cordon + taint worker3; worker/worker2 stay schedulable)..."
+	$(KUBECTL) cordon $(WORKER_C)
+	$(KUBECTL) taint node $(WORKER_C) dedicated=special:NoSchedule --overwrite
+	@echo "Applying manual-testing scenarios (broken pods expected — not waited on)..."
+	$(KUBECTL) apply -f $(SCENARIOS)
+	@echo ""
+	@echo "Cluster ready. Manual-test playground (KUBECONFIG=$(KUBECONFIG_FILE)):"
+	@echo "  kdiag inspect pod  --troubleshoot -n kdiag-scheduling   # sched-nodeselector / sched-cpu / sched-taint"
+	@echo "  kdiag inspect pod  --troubleshoot -n kdiag-runtime      # rt-crashloop / rt-imagepull / rt-oom / rt-notready"
+	@echo "  kdiag inspect deploy wl-degraded --troubleshoot -n kdiag-workloads   # Degraded"
+	@echo "  kdiag inspect deploy wl-healthy  --troubleshoot -n kdiag-workloads   # Healthy"
+	@echo "  kdiag inspect node --troubleshoot                       # cordoned + tainted workers"
+	@echo "  kdiag inspect pod  --az -n kdiag-workloads --label app=wl-healthy    # zone spread"
 
 ## cluster-down: delete the kind cluster
 cluster-down:

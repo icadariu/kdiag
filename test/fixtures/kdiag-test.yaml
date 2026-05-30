@@ -66,6 +66,27 @@ spec:
       image: busybox:latest
       command: ["sh", "-c", "exit 1"]
 ---
+# Deliberately unschedulable pod for `inspect pod --schedule`. The nodeSelector
+# matches no node AND the cpu request exceeds any node's allocatable, so the
+# scheduler emits a FailedScheduling event and kdiag re-derives both blockers.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kdiag-unschedulable
+  namespace: kdiag-test
+  labels:
+    app: unschedulable
+spec:
+  nodeSelector:
+    kdiag.test/nonexistent: "true"
+  containers:
+    - name: hog
+      image: nginx:alpine
+      resources:
+        requests:
+          cpu: "100"
+          memory: 16Mi
+---
 # DaemonSet: one pod per node — exercises `inspect ds`.
 apiVersion: apps/v1
 kind: DaemonSet

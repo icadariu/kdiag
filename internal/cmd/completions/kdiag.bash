@@ -135,17 +135,19 @@ _kdiag() {
             --deployment-spec)   view_seen=spec ;;
             --az)                view_seen=az ;;
             --pods)              view_seen=pods ;;
+            --troubleshoot)      view_seen=troubleshoot ;;
         esac
     done
 
     local inspect_flags
     case "${view_seen}" in
-        path)       inspect_flags="${shared_flags} --path" ;;
-        resources)  inspect_flags="${shared_flags} --resources --az --yaml" ;;
-        spec)       inspect_flags="${shared_flags} --deployment-spec --yaml" ;;
-        az)         inspect_flags="${shared_flags} --az --yaml" ;;
-        pods)       inspect_flags="${shared_flags} --pods --yaml" ;;
-        *)          inspect_flags="${shared_flags} --resources --az --deployment-spec --pods --yaml --path" ;;
+        path)         inspect_flags="${shared_flags} --path" ;;
+        resources)    inspect_flags="${shared_flags} --resources --az --yaml" ;;
+        spec)         inspect_flags="${shared_flags} --deployment-spec --yaml" ;;
+        az)           inspect_flags="${shared_flags} --az --yaml" ;;
+        pods)         inspect_flags="${shared_flags} --pods --yaml" ;;
+        troubleshoot) inspect_flags="${shared_flags} --troubleshoot --yaml" ;;
+        *)            inspect_flags="${shared_flags} --resources --az --troubleshoot --deployment-spec --pods --yaml --path" ;;
     esac
 
     case "${cmd}" in

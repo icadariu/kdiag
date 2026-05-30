@@ -253,6 +253,124 @@ func TestInspectPod_AZ_YAML(t *testing.T) {
 	}
 }
 
+// `inspect pod --troubleshoot` on an unschedulable pod produces the scheduling
+// explainer. Asserts the kdiag-derived parts (deterministic, no event race):
+// the unscheduled header, the Scheduler section, the nodeSelector blocker, and
+// the cpu shortfall.
+func TestInspectPod_Troubleshoot_Scheduling(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-unschedulable", "--troubleshoot", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	wants := []string{
+		"Pod: kdiag-unschedulable",
+		"unscheduled",
+		"Scheduler",
+		"kdiag.test/nonexistent=true not satisfied",
+		"Insufficient cpu",
+	}
+	for _, w := range wants {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
+		}
+	}
+}
+
+// `inspect pod --troubleshoot --yaml` on an unschedulable pod nests the
+// scheduling report; every node must be reported as not fitting with a blocker.
+func TestInspectPod_Troubleshoot_Scheduling_YAML(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-unschedulable", "--troubleshoot", "--yaml", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	var doc struct {
+		Pod        string
+		Verdict    string
+		Scheduling struct {
+			Nodes []struct {
+				Name     string
+				Fits     bool
+				Blockers []string
+			}
+		}
+	}
+	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("yaml.Unmarshal failed: %v\nstdout: %s", err, out)
+	}
+	if doc.Verdict != "Unschedulable" {
+		t.Errorf("verdict = %q, want Unschedulable", doc.Verdict)
+	}
+	if len(doc.Scheduling.Nodes) == 0 {
+		t.Fatalf("expected at least one node verdict\nstdout: %s", out)
+	}
+	for _, n := range doc.Scheduling.Nodes {
+		if n.Fits {
+			t.Errorf("node %q reported as fitting, but the pod is unschedulable", n.Name)
+		}
+		if len(n.Blockers) == 0 {
+			t.Errorf("node %q has no blockers despite not fitting", n.Name)
+		}
+	}
+}
+
+// `inspect pod --troubleshoot` on a crashlooping pod reports the runtime issue.
+func TestInspectPod_Troubleshoot_Runtime(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-crasher", "--troubleshoot", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	if !strings.Contains(out, "Unhealthy") {
+		t.Errorf("expected Unhealthy verdict for crasher:\n%s", out)
+	}
+	if !strings.Contains(out, "crasher") {
+		t.Errorf("expected the crasher container named in an issue:\n%s", out)
+	}
+}
+
+// `inspect pod --troubleshoot` on a healthy pod reports no problems.
+func TestInspectPod_Troubleshoot_Healthy(t *testing.T) {
+	out, _, code := run("inspect", "pod", "kdiag-static", "--troubleshoot", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	if !strings.Contains(out, "Healthy") || !strings.Contains(out, "No problems") {
+		t.Errorf("expected a healthy verdict for kdiag-static:\n%s", out)
+	}
+}
+
+// `inspect deploy --troubleshoot` reports replica health for a healthy deployment.
+func TestInspectDeploy_Troubleshoot(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "test-app", "--troubleshoot", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	if !strings.Contains(out, "Deployment: test-app") || !strings.Contains(out, "Replicas:") {
+		t.Errorf("expected workload header with replicas:\n%s", out)
+	}
+}
+
+// `inspect node --troubleshoot` works for the node kind and reports health.
+func TestInspectNode_Troubleshoot(t *testing.T) {
+	out, _, code := run("inspect", "node", "--troubleshoot")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	if !strings.Contains(out, "Node:") {
+		t.Errorf("expected per-node troubleshoot output:\n%s", out)
+	}
+}
+
+// --troubleshoot is a view selector and must not compose with --resources.
+func TestInspectPod_Troubleshoot_NotWithResources(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "--troubleshoot", "--resources", "-n", "kdiag-test", "kdiag-static")
+	if code == 0 {
+		t.Error("expected non-zero exit when --troubleshoot is combined with --resources")
+	}
+	if !strings.Contains(errOut, "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' in stderr:\n%s", errOut)
+	}
+}
+
 // --resources is a view selector and must not compose with --az.
 func TestInspectPod_Resources_NotWithAZ(t *testing.T) {
 	_, errOut, code := run("inspect", "pod", "--resources", "--az", "-n", "kdiag-test", "kdiag-static")
@@ -2205,13 +2323,15 @@ func TestComplete_Namespaces(t *testing.T) {
 		}
 	}
 
-	// Prefix filter.
-	out, _, code := run("__complete", "namespaces", "kdiag")
+	// Prefix filter. Use "kdiag-t" so it uniquely matches the kdiag-test fixture
+	// (the manual-scenario namespaces — kdiag-scheduling/runtime/workloads — also
+	// start with "kdiag-").
+	out, _, code := run("__complete", "namespaces", "kdiag-t")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 	if strings.TrimSpace(out) != "kdiag-test" {
-		t.Errorf("expected only kdiag-test for prefix 'kdiag', got:\n%s", out)
+		t.Errorf("expected only kdiag-test for prefix 'kdiag-t', got:\n%s", out)
 	}
 	if strings.Contains(out, "kube-system") {
 		t.Errorf("prefix filter should exclude kube-system:\n%s", out)
