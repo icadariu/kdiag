@@ -122,7 +122,7 @@ Flags:
   <partial-name>         Partial pod name match (pod only)
 `)
 	if showFormat(seen) {
-		fmt.Fprintln(w, "  --yaml, --yml          Emit YAML instead of text (default: text)")
+		fmt.Fprintln(w, "  --yaml                 Emit YAML instead of text (default: text)")
 	}
 	if showPath(seen) {
 		fmt.Fprintln(w, "  --path <needle>        Only print yq paths matching <needle> (kdiag help yml-path for details)")
@@ -135,7 +135,7 @@ Flags:
 	}
 	if showAZ(seen) {
 		fmt.Fprint(w, `  --az                   Availability-zone placement (pod, deploy, ds, sts).
-                         Composes with --yaml/--yml; mutually exclusive with
+                         Composes with --yaml; mutually exclusive with
                          --resources / --deployment-spec / --path (each selects a view).
 `)
 	}
@@ -149,11 +149,12 @@ Flags:
 }
 
 // Composition rules for view selectors:
-//   none seen        → show everything
-//   path             → show only --namespace, --label, --path
-//   resources        → show --resources, --yaml/--yml, --az; hide --path, --deployment-spec
-//   deployment-spec  → show --deployment-spec, --yaml/--yml; hide --path, --resources, --az
-//   az               → show --az, --yaml/--yml; hide --path, --resources, --deployment-spec
+//
+//	none seen        → show everything
+//	path             → show only --namespace, --label, --path
+//	resources        → show --resources, --yaml, --az; hide --path, --deployment-spec
+//	deployment-spec  → show --deployment-spec, --yaml; hide --path, --resources, --az
+//	az               → show --az, --yaml; hide --path, --resources, --deployment-spec
 func showPath(seen string) bool      { return seen == "" || seen == "path" }
 func showFormat(seen string) bool    { return seen != "path" }
 func showResources(seen string) bool { return seen == "" || seen == "resources" }
@@ -201,6 +202,16 @@ func PrintYMLPathTopic(w io.Writer) {
 Walk the resource YAML and print every yq path whose key or value matches
 <needle>. Works for any kind including CRDs.
 
+Sources:
+  Two documents are searched per resource, each under its own header:
+    # kubectl get <kind> <name> -o yaml   the raw API object
+    # kdiag inspect <kind> <name> --yaml  kdiag's curated view
+  The curated view synthesizes fields the raw object lacks (e.g. tag/digest
+  split from an image), so a needle like '*tag*' resolves there. A header prints
+  only when that document matched; its paths are valid yq targets against the
+  command named in the header. CRDs and kinds without a curated view show the
+  raw section only.
+
 Matching:
   Default match is exact (full key or full value).
   Use '*' as a glob: 'name*' (prefix), '*name' (suffix), '*name*' (substring).
@@ -208,7 +219,7 @@ Matching:
 
 Compatibility:
   --path composes with --namespace and --label.
-  --path is mutually exclusive with --yaml/--yml, --resources, --deployment-spec,
+  --path is mutually exclusive with --yaml, --resources, --deployment-spec,
   --az (each selects a different view).
 
 Examples:

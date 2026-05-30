@@ -167,8 +167,8 @@ INSPECT_FLAGS[statefulset]="--namespace --resources --yaml --yml-path --az"
 INSPECT_FLAGS[replicaset]="--namespace --resources --yaml --yml-path --az"
 INSPECT_FLAGS[node]="--namespace --label"
 
-# --yml is accepted as an alias by the Go side but intentionally NOT offered
-# in completion menus — included here so the "extra" check verifies absence.
+# --yml is no longer a recognised flag (removed in favour of --yaml) — kept in
+# this universe so the "extra" check verifies it is never offered in completion.
 ALL_INSPECT_FLAGS=(--namespace --resources --yaml --yml --yml-path --label --az --spec)
 INSPECT_KINDS=(pod deployment daemonset statefulset replicaset node)
 

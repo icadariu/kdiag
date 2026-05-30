@@ -203,7 +203,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 		cli.Fatal(fmt.Errorf("--path requires a non-empty value"))
 	}
 	switch unknown {
-	case "--yaml", "--yml", "--resources", "--deployment-spec", "--az":
+	case "--yaml", "--resources", "--deployment-spec", "--az":
 		cli.Fatal(fmt.Errorf(
 			"--path is mutually exclusive with %s (each selects a view). "+
 				"Drop one of them, or run `kdiag inspect <kind> -h` for usage.", unknown))
@@ -211,7 +211,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 	if unknown != "" {
 		cli.Fatal(fmt.Errorf(
 			"--path: unknown flag %q (only -n/--namespace and -l/--label compose with --path; "+
-				"--yaml/--yml, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
+				"--yaml, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
@@ -238,16 +238,13 @@ func commonFlags(fs *pflag.FlagSet) (*kube.KubeFlags, *bool) {
 	return &k, &showResources
 }
 
-// registerYAMLFlag wires the structured-output flag onto fs: --yaml with --yml
-// as an accepted alias (hidden from help to avoid listing the same switch
-// twice). It returns a func reporting whether YAML output was requested.
-// kdiag only emits YAML for structured output; the default is text.
+// registerYAMLFlag wires the structured-output flag onto fs: --yaml. It returns
+// a func reporting whether YAML output was requested. kdiag only emits YAML for
+// structured output; the default is text.
 func registerYAMLFlag(fs *pflag.FlagSet) func() bool {
-	var asYAML, asYML bool
-	fs.BoolVar(&asYAML, "yaml", false, "emit YAML instead of text (alias: --yml)")
-	fs.BoolVar(&asYML, "yml", false, "")
-	_ = fs.MarkHidden("yml")
-	return func() bool { return asYAML || asYML }
+	var asYAML bool
+	fs.BoolVar(&asYAML, "yaml", false, "emit YAML instead of text")
+	return func() bool { return asYAML }
 }
 
 // inspectPodObject renders the pod-level summary (Pod: <name>, Node, Pod IP,
@@ -349,7 +346,7 @@ func dashIfEmpty(s string) string {
 	return s
 }
 
-// emit marshals v to YAML on stdout. Used wherever --yaml/--yml is set
+// emit marshals v to YAML on stdout. Used wherever --yaml is set
 // (alone or combined with --resources / --deployment-spec) to produce
 // stdout that is valid YAML (yq-pipeable, no banners). kdiag emits YAML only.
 func emit(v any) {

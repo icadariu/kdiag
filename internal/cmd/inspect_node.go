@@ -339,7 +339,7 @@ func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	if seen == "path" {
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	} else {
-		fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML document.")
+		fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a structured YAML document.")
 		fmt.Fprintln(w, "View: --pods lists the non-terminated pods scheduled on the node (all namespaces),")
 		fmt.Fprintln(w, "      with CPU/memory requests & limits as a % of node allocatable, plus a totals summary.")
 	}
