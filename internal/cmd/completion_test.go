@@ -16,12 +16,12 @@ func readCompletionScript(t *testing.T, path string) string {
 
 func TestBashCompletion_HasPathAndYAML(t *testing.T) {
 	s := readCompletionScript(t, "completions/kdiag.bash")
-	for _, want := range []string{"--path", "--yaml", "--yml"} {
+	for _, want := range []string{"--path", "--yaml"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("bash script missing %q", want)
 		}
 	}
-	for _, banned := range []string{"--yml-path", "--find-path", "--output", "--format"} {
+	for _, banned := range []string{"--yml", "--find-path", "--output", "--format"} {
 		if strings.Contains(s, banned) {
 			t.Errorf("bash script still references %q", banned)
 		}
@@ -45,12 +45,12 @@ func TestBashCompletion_ViewFlagFiltering(t *testing.T) {
 
 func TestZshCompletion_HasPathAndYAML(t *testing.T) {
 	s := readCompletionScript(t, "completions/kdiag.zsh")
-	for _, want := range []string{"--path", "--yaml", "--yml"} {
+	for _, want := range []string{"--path", "--yaml"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("zsh script missing %q", want)
 		}
 	}
-	for _, banned := range []string{"--yml-path", "--find-path", "--output", "--format"} {
+	for _, banned := range []string{"--yml", "--find-path", "--output", "--format"} {
 		if strings.Contains(s, banned) {
 			t.Errorf("zsh script still references %q", banned)
 		}

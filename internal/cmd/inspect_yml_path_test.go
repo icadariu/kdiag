@@ -56,12 +56,12 @@ func TestIsAllLower(t *testing.T) {
 
 func TestFormatKeyPath(t *testing.T) {
 	cases := map[string]string{
-		"spec":                                ".spec",
-		"qosClass":                            ".qosClass",
-		"image-pull-policy":                   `["image-pull-policy"]`,
-		"kubectl.kubernetes.io/last-applied":  `["kubectl.kubernetes.io/last-applied"]`,
-		"_underscoreStart":                    "._underscoreStart",
-		"0starts-with-digit":                  `["0starts-with-digit"]`,
+		"spec":                               ".spec",
+		"qosClass":                           ".qosClass",
+		"image-pull-policy":                  `["image-pull-policy"]`,
+		"kubectl.kubernetes.io/last-applied": `["kubectl.kubernetes.io/last-applied"]`,
+		"_underscoreStart":                   "._underscoreStart",
+		"0starts-with-digit":                 `["0starts-with-digit"]`,
 	}
 	for in, want := range cases {
 		if got := formatKeyPath(in); got != want {
@@ -439,5 +439,33 @@ func TestRegroupByName_Empty(t *testing.T) {
 	got := regroupByName(nil)
 	if len(got) != 0 {
 		t.Errorf("got %d groups, want 0", len(got))
+	}
+}
+
+func TestToGenericMap_KdiagViewIsWalkable(t *testing.T) {
+	// The kdiag `--yaml` view synthesizes a `tag` key (image split by
+	// ParseImage) that does NOT exist in the raw Kubernetes object. Walking the
+	// curated struct via toGenericMap is what lets `--path '*tag*'` find it.
+	pi := podInfo{
+		Name: "p1",
+		Containers: []containerInfo{
+			{Name: "nginx", Image: "nginx", Tag: "1.27"},
+		},
+	}
+	m, err := toGenericMap(pi)
+	if err != nil {
+		t.Fatalf("toGenericMap: %v", err)
+	}
+	want := []string{".containers[0].tag"}
+	// Glob and exact both match the synthesized key.
+	if got := walkYMLPath(m, "", "", "*tag*", true); !reflect.DeepEqual(got, want) {
+		t.Fatalf("tag glob: got %v, want %v", got, want)
+	}
+	if got := walkYMLPath(m, "", "", "tag", true); !reflect.DeepEqual(got, want) {
+		t.Fatalf("tag exact: got %v, want %v", got, want)
+	}
+	// A raw-only field (imagePullPolicy) is absent from the kdiag view.
+	if got := walkYMLPath(m, "", "", "*imagepull*", true); len(got) != 0 {
+		t.Fatalf("kdiag view should not contain imagePullPolicy, got %v", got)
 	}
 }

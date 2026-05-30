@@ -266,14 +266,14 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
 	if seen != "path" {
-		fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML doc (map for one pod, list for many).")
+		fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a structured YAML doc (map for one pod, list for many).")
 	}
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  --yaml/--yml composes with --resources and --az; --path takes only --namespace/--label.")
+		fmt.Fprintln(w, "  --yaml composes with --resources and --az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))

@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"example.com/kdiag/internal/cli"
 	"example.com/kdiag/internal/kube"
@@ -70,31 +74,125 @@ func runInspectPath(env *kube.KubeEnv, kind, name, selector, needle string) {
 	// unambiguous even when only one resource matches. Name-lookup mode
 	// targets exactly one resource and prints matches flat.
 	header := name == ""
+	kindLower := strings.ToLower(resolved.GVK.Kind)
 	for i := range items {
 		obj := items[i]
-		matches := walkYMLPath(obj.Object, "", "", needle, smart)
-		if len(matches) == 0 {
+		// Two documents are searched per resource: the raw API object (what
+		// `kubectl get -o yaml` shows) and kdiag's curated `--yaml` view (which
+		// synthesizes fields like `tag` that the raw object lacks). Their paths
+		// reference different documents, so each set prints under a header
+		// naming the command that produces it.
+		rawMatches := walkYMLPath(obj.Object, "", "", needle, smart)
+		var kdiagMatches []string
+		if view, ok := kdiagViewForObject(env, kind, &obj); ok {
+			if m, err := toGenericMap(view); err == nil {
+				kdiagMatches = walkYMLPath(m, "", "", needle, smart)
+			}
+		}
+		if len(rawMatches) == 0 && len(kdiagMatches) == 0 {
 			continue
 		}
-		groups := regroupByName(matches)
 		indent := ""
 		if header {
 			fmt.Printf("%s/%s:\n", resolved.GVK.Kind, obj.GetName())
 			indent = "  "
 		}
-		for _, g := range groups {
-			if g.name == "" {
-				for _, p := range g.paths {
-					fmt.Printf("%s%s\n", indent, p)
-				}
-				continue
-			}
-			fmt.Printf("%s%s:\n", indent, g.name)
+		printPathSection(indent, fmt.Sprintf("# kubectl get %s %s -o yaml", kindLower, obj.GetName()), rawMatches)
+		printPathSection(indent, fmt.Sprintf("# kdiag inspect %s %s --yaml", kindLower, obj.GetName()), kdiagMatches)
+	}
+}
+
+// printPathSection prints one labeled result set: a `#` header naming the source
+// document, then the regrouped yq paths (named-array elements nested under their
+// `name`). Nothing is printed when matches is empty, so a section header only
+// appears when that document actually contained the needle.
+func printPathSection(indent, header string, matches []string) {
+	if len(matches) == 0 {
+		return
+	}
+	fmt.Printf("%s%s\n", indent, header)
+	for _, g := range regroupByName(matches) {
+		if g.name == "" {
 			for _, p := range g.paths {
-				fmt.Printf("%s  %s\n", indent, p)
+				fmt.Printf("%s%s\n", indent, p)
 			}
+			continue
+		}
+		fmt.Printf("%s%s:\n", indent, g.name)
+		for _, p := range g.paths {
+			fmt.Printf("%s  %s\n", indent, p)
 		}
 	}
+}
+
+// kdiagViewForObject returns the curated `--yaml` payload kdiag would emit for
+// this resource, so `--path` can search it alongside the raw object. The
+// already-fetched Unstructured is converted to its typed form (no extra Get)
+// and handed to the same builders the `--yaml` handlers use, guaranteeing the
+// searched document matches `--yaml` byte-for-byte. Workloads still list pods
+// (a separate resource), exactly as `--yaml` does.
+//
+// Returns ok=false for kinds without a curated view (CRDs, unknown kinds) or on
+// any conversion/fetch error — the caller then falls back to raw-only output.
+func kdiagViewForObject(env *kube.KubeEnv, kind string, obj *unstructured.Unstructured) (any, bool) {
+	conv := runtime.DefaultUnstructuredConverter
+	ctx := context.Background()
+	switch kube.CanonicalKind(kind) {
+	case "pod":
+		var p corev1.Pod
+		if err := conv.FromUnstructured(obj.Object, &p); err != nil {
+			return nil, false
+		}
+		return podInfoFrom(p), true
+	case "deployment":
+		var d appsv1.Deployment
+		if err := conv.FromUnstructured(obj.Object, &d); err != nil {
+			return nil, false
+		}
+		return deployWorkloadInfo(env, &d, listDeployPods(env, ctx, &d)), true
+	case "daemonset":
+		var d appsv1.DaemonSet
+		if err := conv.FromUnstructured(obj.Object, &d); err != nil {
+			return nil, false
+		}
+		return workloadInfoForSelector(env, ctx, "DaemonSet", d.Name, daemonsetSummary(&d), d.Spec.Selector), true
+	case "statefulset":
+		var s appsv1.StatefulSet
+		if err := conv.FromUnstructured(obj.Object, &s); err != nil {
+			return nil, false
+		}
+		return workloadInfoForSelector(env, ctx, "StatefulSet", s.Name, statefulsetSummary(&s), s.Spec.Selector), true
+	case "replicaset":
+		var r appsv1.ReplicaSet
+		if err := conv.FromUnstructured(obj.Object, &r); err != nil {
+			return nil, false
+		}
+		return workloadInfoForSelector(env, ctx, "ReplicaSet", r.Name, replicasetSummary(&r), r.Spec.Selector), true
+	case "node":
+		var n corev1.Node
+		if err := conv.FromUnstructured(obj.Object, &n); err != nil {
+			return nil, false
+		}
+		return nodeInfoFrom(n), true
+	default:
+		return nil, false
+	}
+}
+
+// toGenericMap renders a kdiag view struct as the same map[string]any the
+// walker traverses for raw objects. Going through JSON tags makes the walked
+// keys identical to `--yaml` output, which marshals via sigs.k8s.io/yaml
+// (also json-tag based).
+func toGenericMap(v any) (map[string]any, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // walkYMLPath walks node (a map[string]any or []any from

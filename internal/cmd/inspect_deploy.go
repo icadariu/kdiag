@@ -118,7 +118,7 @@ func runInspectDeploy(args []string) {
 		}
 	}
 
-	// --resources/--deployment-spec/--az are view selectors (mutex); --yaml/--yml
+	// --resources/--deployment-spec/--az are view selectors (mutex); --yaml
 	// composes with any view.
 	if showAZ && (*showResources || showSpec) {
 		fmt.Fprintln(os.Stderr, "Error: --az is mutually exclusive with --resources/--deployment-spec (all select a view)")
@@ -232,13 +232,13 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<deployment-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow deployment summary and per-pod container state.")
-	fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a structured YAML document.")
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --deployment-spec, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  --yaml/--yml composes with --resources/--deployment-spec/--az; --path takes only --namespace/--label.")
+		fmt.Fprintln(w, "  --yaml composes with --resources/--deployment-spec/--az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))

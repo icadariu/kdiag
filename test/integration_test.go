@@ -536,9 +536,9 @@ func TestInspectPod_HelpMentionsYMLPath(t *testing.T) {
 		t.Errorf("expected `--path` to be mentioned in inspect pod help:\n%s", out)
 	}
 	// The old wording promised universal composition with the format flag, but
-	// --path rejects --yaml/--yml. Either claim must qualify the exception
+	// --path rejects --yaml. Either claim must qualify the exception
 	// or be removed; the unqualified sentence is what we forbid.
-	bad := "--yaml/--yml is a format flag and composes with any view."
+	bad := "--yaml is a format flag and composes with any view."
 	if strings.Contains(out, bad) {
 		t.Errorf("help still contains misleading sentence %q — it contradicts the --path rejection:\n%s", bad, out)
 	}
@@ -669,7 +669,7 @@ func TestInspectDeploy_FlagMatrix(t *testing.T) {
 	}
 }
 
-// -o/--output were removed in favour of --yaml/--yml. Both spellings must now
+// -o/--output were removed in favour of --yaml. Both spellings must now
 // be rejected as unknown flags.
 func TestInspect_OutputFlagRemoved(t *testing.T) {
 	cases := [][]string{
@@ -690,21 +690,6 @@ func TestInspect_OutputFlagRemoved(t *testing.T) {
 // `--yaml` for the pod info path emits a parseable YAML map.
 func TestInspectPod_YAML(t *testing.T) {
 	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yaml")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
-	}
-	var got map[string]any
-	if err := yaml.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("output is not valid YAML: %v\n%s", err, out)
-	}
-	if got["name"] != "kdiag-static" {
-		t.Errorf("expected name=kdiag-static, got: %v", got["name"])
-	}
-}
-
-// The --yml alias behaves identically to --yaml.
-func TestInspectPod_YMLAlias(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "-n", "kdiag-test", "--yml")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -1157,9 +1142,9 @@ func TestInspectNode_Pods_YAML(t *testing.T) {
 	}
 	// sigs.k8s.io/yaml decodes YAML via the json tags, so the same struct works.
 	var views []struct {
-		Node      string `json:"node"`
-		Total     int    `json:"total"`
-		Pods      []struct {
+		Node  string `json:"node"`
+		Total int    `json:"total"`
+		Pods  []struct {
 			Namespace   string `json:"namespace"`
 			Name        string `json:"name"`
 			CPURequests string `json:"cpuRequests"`
@@ -1989,11 +1974,11 @@ func TestHelp(t *testing.T) {
 // must list its children.
 func TestNestedHelp(t *testing.T) {
 	cases := []struct {
-		name      string
-		args      []string
-		wantCode  int
-		contains  []string
-		excludes  []string
+		name     string
+		args     []string
+		wantCode int
+		contains []string
+		excludes []string
 	}{
 		{
 			name:     "root --help",
@@ -2276,10 +2261,10 @@ func TestComplete_Resources(t *testing.T) {
 // shell doesn't spew errors at the user's cursor.
 func TestComplete_SilentOnBadInput(t *testing.T) {
 	cases := [][]string{
-		{"__complete"},                              // no subcommand
-		{"__complete", "resources"},                 // missing kind
-		{"__complete", "resources", "thingamajig"},  // unknown kind
-		{"__complete", "bogus"},                     // unknown subcommand
+		{"__complete"},                             // no subcommand
+		{"__complete", "resources"},                // missing kind
+		{"__complete", "resources", "thingamajig"}, // unknown kind
+		{"__complete", "bogus"},                    // unknown subcommand
 	}
 	for _, args := range cases {
 		out, errOut, code := run(args...)
@@ -2364,6 +2349,80 @@ func TestInspect_YMLPath_DeploymentMemory(t *testing.T) {
 	}
 }
 
+// `--path` searches two documents per resource: the raw API object and kdiag's
+// curated `--yaml` view. `tag` is synthesized by kdiag (ParseImage splits the
+// image) and exists ONLY in the kdiag view — so `*tag*` must surface under the
+// `# kdiag inspect ... --yaml` header and produce no raw `# kubectl get` section.
+func TestInspect_YMLPath_KdiagViewSynthesizedTag(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--path", "*tag*")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "# kdiag inspect deployment kdiag-multicont --yaml") {
+		t.Errorf("missing kdiag-view section header:\n%s", out)
+	}
+	if !strings.Contains(out, ".pods[0].containers[0].tag") {
+		t.Errorf("missing synthesized tag path:\n%s", out)
+	}
+	// The raw object has no `tag` key, so no kubectl-get section should print.
+	if strings.Contains(out, "# kubectl get") {
+		t.Errorf("raw object has no `tag`; kubectl-get section should be absent:\n%s", out)
+	}
+}
+
+// A key present in BOTH documents (`image` exists raw and in the kdiag view)
+// prints under both labeled sections, with each path valid against its source.
+func TestInspect_YMLPath_ImageInBothDocuments(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--path", "*image*")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"# kubectl get deployment kdiag-multicont -o yaml",
+		".spec.template.spec.containers[0].image",
+		"# kdiag inspect deployment kdiag-multicont --yaml",
+		".pods[0].containers[0].image",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+// Raw-object parity is preserved: a field that exists only in the raw object
+// (imagePullPolicy, defaulted by the API server) still resolves, and the kdiag
+// view — which has no such field — contributes no section.
+func TestInspect_YMLPath_RawOnlyFieldStillFound(t *testing.T) {
+	out, _, code := run("inspect", "deploy", "kdiag-multicont", "-n", "kdiag-test", "--path", "*imagepull*")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "# kubectl get deployment kdiag-multicont -o yaml") {
+		t.Errorf("missing raw-object section header:\n%s", out)
+	}
+	if !strings.Contains(out, "imagePullPolicy") {
+		t.Errorf("missing imagePullPolicy path:\n%s", out)
+	}
+	if strings.Contains(out, "# kdiag inspect") {
+		t.Errorf("kdiag view has no imagePullPolicy; section should be absent:\n%s", out)
+	}
+}
+
+// A CRD has no curated kdiag view, so `--path` falls back to raw-only output —
+// no `# kdiag inspect ... --yaml` section.
+func TestInspect_YMLPath_CRDRawOnly(t *testing.T) {
+	out, _, code := run("inspect", "widget", "kdiag-widget", "-n", "kdiag-test", "--path", "*color*")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, ".spec.color") {
+		t.Errorf("missing raw CRD path .spec.color:\n%s", out)
+	}
+	if strings.Contains(out, "# kdiag inspect") {
+		t.Errorf("CRD has no kdiag view; section should be absent:\n%s", out)
+	}
+}
+
 func TestInspect_YMLPath_PipeIntoYQ(t *testing.T) {
 	if _, err := exec.LookPath("yq"); err != nil {
 		t.Skip("yq not installed in PATH; skipping pipeline test")
@@ -2418,7 +2477,7 @@ func TestInspect_YMLPath_ConflictWithYAML(t *testing.T) {
 		t.Fatalf("expected non-zero exit:\n%s", out)
 	}
 	combined := out + errOut
-	if !strings.Contains(combined, "--path") || (!strings.Contains(combined, "--yaml") && !strings.Contains(combined, "--yml")) {
+	if !strings.Contains(combined, "--path") || !strings.Contains(combined, "--yaml") {
 		t.Errorf("conflict error should name both flags:\n%s", combined)
 	}
 }

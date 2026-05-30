@@ -55,18 +55,18 @@ instead of container state.
 
 #### Pod output flags
 
-`--yaml` (alias `--yml`) emits a structured YAML document instead of text — a
+`--yaml` emits a structured YAML document instead of text — a
 single yq-pipeable document. Default output is text. kdiag emits YAML only;
 there is no JSON output.
 `--resources` narrows the output to per-container resource info (text or structured).
 `--path <keyword>` finds all paths matching the keyword.
-`--az` composes with `--yaml`/`--yml` (emits `{placements, zoneSummary}`); it is
+`--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
 mutually exclusive with `--resources` / `--path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--yaml`, `--yml` | Emit a structured YAML document (default: text) |
+| `--yaml` | Emit a structured YAML document (default: text) |
 | `--resources` | Narrow output to per-container resource info (text or structured) |
 | `--path <keyword>` | Find all paths matching the keyword in the YAML |
 
@@ -136,19 +136,19 @@ Workload summary fields:
 
 #### Workload output flags
 
-`--yaml` (alias `--yml`) emits a kdiag-shaped YAML document:
+`--yaml` emits a kdiag-shaped YAML document:
 `{ name, kind, namespace, replicas, strategy, selector, pods: [...] }`.
 kdiag emits YAML only; there is no JSON output.
 `--deployment-spec` (deploy only) emits the pod template spec (text or structured).
 `--resources` narrows output to per-container resource info (text or structured).
 `--path <keyword>` finds all paths matching the keyword.
-`--az` composes with `--yaml`/`--yml` (emits `{placements, zoneSummary}`); it is
+`--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
 mutually exclusive with `--resources` / `--deployment-spec` / `--path` since each
 of those selects a different view.
 
 | Flag | Description |
 | ---- | ----------- |
-| `--yaml`, `--yml` | Emit a structured YAML document (kdiag-shaped) |
+| `--yaml` | Emit a structured YAML document (kdiag-shaped) |
 | `--deployment-spec` | Emit the pod template spec (deploy only; errors on other kinds) |
 | `--resources` | Narrow output to per-container resource info (text or structured) |
 | `--path <keyword>` | Find all paths matching the keyword in the YAML |
@@ -207,7 +207,7 @@ Node summary fields:
 summary block with the **non-terminated pods** scheduled on the node (across all
 namespaces), showing each pod's CPU/memory requests & limits as a percentage of
 node allocatable, plus an "Allocated resources" totals summary. It composes with
-`--yaml`/`--yml` (per-pod rows carry plain quantity strings; the node's
+`--yaml` (per-pod rows carry plain quantity strings; the node's
 `allocatable` and an `allocated` percentage summary are included so consumers can
 recompute). `--pods` is mutually exclusive with `--path`.
 
@@ -250,6 +250,19 @@ you know the keyword (`Burstable`, `memory`, `imagePullPolicy`, …) but not whe
 sits in the object. Works for **every** kind the cluster exposes, including
 CRDs.
 
+**Two documents are searched per resource**, each printed under a header that
+names the command producing it:
+
+- `# kubectl get <kind> <name> -o yaml` — the raw API object (what `kubectl`
+  shows).
+- `# kdiag inspect <kind> <name> --yaml` — kdiag's curated view, which
+  synthesizes fields the raw object lacks (e.g. `tag`/`digest` split from an
+  image, `qosClass`, container `kind`). A needle like `*tag*` lives only here.
+
+A header appears only when that document actually matched, and each path is a
+valid `yq` target against the command in its header. CRDs and kinds without a
+curated view show the raw section only.
+
 Output is paths only (one per line). Array elements render with concrete
 indices (e.g., `[0]`, `[1]`) rather than generalized `[]`. When a resource has
 named arrays (containers, ports, volumes, …) with multiple elements, matches
@@ -288,23 +301,39 @@ kdiag inspect pod my-pod --path name
 # .metadata.name
 # .spec.containers[0].name
 
-# Glob match for partial keys (multi-container deployment)
+# Glob match for partial keys (multi-container deployment). `memory` exists in
+# both documents, so both sections print.
 kdiag inspect deploy kdiag-multicont --namespace kdiag-test --path memory
+# # kubectl get deployment kdiag-multicont -o yaml
 # api:
 #   .spec.template.spec.containers[0].resources.limits.memory
 #   .spec.template.spec.containers[0].resources.requests.memory
 # sidecar:
 #   .spec.template.spec.containers[1].resources.limits.memory
 #   .spec.template.spec.containers[1].resources.requests.memory
+# # kdiag inspect deployment kdiag-multicont --yaml
+# api:
+#   .pods[0].containers[0].resources.limits.memory
+#   ...
 
-# Search across all pods matched by a selector
+# A kdiag-synthesized key (`tag`, split from the image) — only the curated
+# view has it, so kubectl's raw object shows no match.
+kdiag inspect deploy kdiag-multicont --namespace kdiag-test --path '*tag*'
+# # kdiag inspect deployment kdiag-multicont --yaml
+# api:
+#   .pods[0].containers[0].tag
+# sidecar:
+#   .pods[0].containers[1].tag
+
+# Search across all pods matched by a selector. In selector mode each resource
+# gets a `Kind/name:` header, with the two source sections nested beneath it.
 kdiag inspect pod --label app=test-app --namespace kdiag-test --path image
 # Pod/test-app-6dd566fbff-jd2vw:
+#   # kubectl get pod test-app-6dd566fbff-jd2vw -o yaml
 #   .spec.containers[0].image
 #   .status.containerStatuses[0].image
-# Pod/test-app-6dd566fbff-xrg84:
-#   .spec.containers[0].image
-#   .status.containerStatuses[0].image
+#   # kdiag inspect pod test-app-6dd566fbff-jd2vw --yaml
+#   .containers[0].image
 
 # Works for CRDs too
 kdiag inspect certificates.cert-manager.io my-cert --path renewBefore
@@ -591,7 +620,7 @@ The binary embeds `version` (from `git describe --tags --always --dirty`),
 `bash` or `zsh`. Scripts cover top-level subcommands (including `help` and
 `completion`), `inspect` kinds, `diff` and `sort` kinds (any kind the
 cluster exposes — built-in or CRD), and per-command flags (`--namespace`,
-`--label`, `--all-namespaces`, `--full`, `--yaml`/`--yml`, `--resources`,
+`--label`, `--all-namespaces`, `--full`, `--yaml`, `--resources`,
 `--deployment-spec`, `--az`, `--path`).
 
 Namespace and resource names are completed dynamically by querying the

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/spf13/pflag"
@@ -81,7 +82,7 @@ func runWorkload(short, label string, args []string) {
 		cli.Fatal(err)
 	}
 
-	// --resources/--az are view selectors (mutex); --yaml/--yml composes with any view.
+	// --resources/--az are view selectors (mutex); --yaml composes with any view.
 	if *showResources && showAZ {
 		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)
@@ -96,19 +97,6 @@ func runWorkload(short, label string, args []string) {
 			emit(collectAZ(env, ctx, pods.Items))
 			return
 		}
-		out := workloadInfo{
-			Name:      name,
-			Kind:      label,
-			Namespace: env.Namespace,
-			Replicas:  summary["Replicas"],
-			Selector:  summary["Selector"],
-			Pods:      make([]podInfo, 0, len(pods.Items)),
-		}
-		if s, ok := summary["Strategy"]; ok {
-			out.Strategy = s
-		} else if s, ok := summary["Update Strategy"]; ok {
-			out.Strategy = s
-		}
 		if *showResources {
 			all := make([]containerResourceSlice, 0)
 			for _, p := range pods.Items {
@@ -117,10 +105,7 @@ func runWorkload(short, label string, args []string) {
 			emit(all)
 			return
 		}
-		for _, p := range pods.Items {
-			out.Pods = append(out.Pods, podInfoFrom(p))
-		}
-		emit(out)
+		emit(workloadInfoFrom(env, label, name, summary, pods.Items))
 		return
 	}
 
@@ -167,6 +152,42 @@ func workloadSummary(ctx context.Context, env *kube.KubeEnv, short, name string)
 	default:
 		return nil, nil, fmt.Errorf("internal: unknown workload short %q", short)
 	}
+}
+
+// workloadInfoFrom builds the kdiag `--yaml` payload for a pod-bearing workload
+// (ds/sts/rs) from its summary, selector, and already-listed pods. Shared by the
+// `inspect <kind> --yaml` default view and the `--path` walker so both emit the
+// same shape.
+func workloadInfoFrom(env *kube.KubeEnv, label, name string, summary map[string]string, pods []corev1.Pod) workloadInfo {
+	out := workloadInfo{
+		Name:      name,
+		Kind:      label,
+		Namespace: env.Namespace,
+		Replicas:  summary["Replicas"],
+		Selector:  summary["Selector"],
+		Pods:      make([]podInfo, 0, len(pods)),
+	}
+	if s, ok := summary["Strategy"]; ok {
+		out.Strategy = s
+	} else if s, ok := summary["Update Strategy"]; ok {
+		out.Strategy = s
+	}
+	for _, p := range pods {
+		out.Pods = append(out.Pods, podInfoFrom(p))
+	}
+	return out
+}
+
+// workloadInfoForSelector lists the workload's pods via its selector and builds
+// the kdiag `--yaml` payload. Used by the `--path` walker, which holds only the
+// converted workload object (pods are a separate resource it must fetch).
+func workloadInfoForSelector(env *kube.KubeEnv, ctx context.Context, label, name string, summary map[string]string, selector *metav1.LabelSelector) workloadInfo {
+	labelSel := metav1.FormatLabelSelector(selector)
+	pods, err := env.Clientset.CoreV1().Pods(env.Namespace).List(ctx, kube.ListOptions(labelSel))
+	if err != nil {
+		cli.Fatal(fmt.Errorf("list pods: %w", err))
+	}
+	return workloadInfoFrom(env, label, name, summary, pods.Items)
 }
 
 func deploySummary(d *appsv1.Deployment) map[string]string {
@@ -226,12 +247,12 @@ func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string, args
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintf(w, "Usage: kdiag inspect %s [flags] <name>\n", short)
 	fmt.Fprintf(w, "\nShow summary and container state for all pods belonging to a %s.\n", label)
-	fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --yaml emits a structured YAML document.")
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
-		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive; --yaml/--yml composes with --resources/--az.")
+		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive; --yaml composes with --resources/--az.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
