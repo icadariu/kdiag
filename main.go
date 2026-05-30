@@ -22,6 +22,8 @@ func main() {
 	switch args[0] {
 	case "inspect":
 		cmd.RunInspect(args[1:])
+	case "troubleshoot":
+		cmd.RunTroubleshoot(args[1:])
 	case "diff":
 		cmd.RunDiff(args[1:])
 	case "events":
@@ -81,6 +83,8 @@ func handleHelp(args []string) {
 	switch topic {
 	case "inspect":
 		cmd.RunInspect(sub)
+	case "troubleshoot":
+		cmd.RunTroubleshoot(sub)
 	case "diff":
 		cmd.RunDiff(sub)
 	case "events":

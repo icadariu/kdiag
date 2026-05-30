@@ -84,17 +84,11 @@ func RunInspect(args []string) {
 		os.Exit(1)
 	}
 
-	// --troubleshoot short-circuits the per-kind handlers with a kind-aware
-	// diagnostic (scheduling + runtime for pods, managed-pod drill-down for
-	// workloads, health for nodes). Handled centrally so every kind gets it,
-	// like --path. It composes with --yaml but with no other view.
-	if name, selector, ns, asYAML, ok := extractTroubleshootArgs(handlerArgs); ok {
-		env, err := kube.NewKubeEnv(kube.KubeFlags{Namespace: ns})
-		if err != nil {
-			cli.Fatal(err)
-		}
-		runInspectTroubleshoot(env, kind, name, selector, asYAML)
-		return
+	// --troubleshoot was promoted to its own command. Point users there rather
+	// than letting it fall through to a generic "unknown flag" error.
+	if hasFlag(handlerArgs, "--troubleshoot") {
+		fmt.Fprintf(os.Stderr, "Error: --troubleshoot was moved to its own command — run `kdiag troubleshoot %s` instead\n", kind)
+		os.Exit(1)
 	}
 
 	// --path short-circuits the per-kind handlers with a generic
@@ -137,7 +131,7 @@ func kindIndex(args []string) int {
 	valueFlags := map[string]bool{
 		"--namespace": true, "-n": true,
 		"--label": true, "-l": true,
-		"--path":  true,
+		"--path": true,
 	}
 	for i := 0; i < len(args); i++ {
 		if valueFlags[args[i]] {
@@ -216,7 +210,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 		cli.Fatal(fmt.Errorf("--path requires a non-empty value"))
 	}
 	switch unknown {
-	case "--yaml", "--resources", "--deployment-spec", "--az", "--troubleshoot":
+	case "--yaml", "--resources", "--deployment-spec", "--az":
 		cli.Fatal(fmt.Errorf(
 			"--path is mutually exclusive with %s (each selects a view). "+
 				"Drop one of them, or run `kdiag inspect <kind> -h` for usage.", unknown))
@@ -224,7 +218,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 	if unknown != "" {
 		cli.Fatal(fmt.Errorf(
 			"--path: unknown flag %q (only -n/--namespace and -l/--label compose with --path; "+
-				"--yaml, --resources, --deployment-spec, --az, --troubleshoot are mutually exclusive)", unknown))
+				"--yaml, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))

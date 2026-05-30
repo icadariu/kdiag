@@ -89,24 +89,21 @@ func TestCompletion_NodePodsFlag(t *testing.T) {
 	}
 }
 
-// `--troubleshoot` is a universal view (valid for every inspect kind). Both
-// shells must detect it as a view selector (view_seen=troubleshoot). zsh is
-// kind-aware, so `--troubleshoot[` must appear several times (the pre-kind union
-// plus each per-kind kflags block).
-func TestCompletion_TroubleshootFlag(t *testing.T) {
-	bash := readCompletionScript(t, "completions/kdiag.bash")
-	if !strings.Contains(bash, "--troubleshoot") {
-		t.Errorf("bash script missing --troubleshoot")
-	}
-	if !strings.Contains(bash, "view_seen=troubleshoot") {
-		t.Errorf("bash script missing view_seen=troubleshoot detection")
-	}
-	zsh := readCompletionScript(t, "completions/kdiag.zsh")
-	if !strings.Contains(zsh, "view_seen=troubleshoot") {
-		t.Errorf("zsh script missing view_seen=troubleshoot detection")
-	}
-	if n := strings.Count(zsh, "--troubleshoot["); n < 2 {
-		t.Errorf("zsh script has %d --troubleshoot entries, want >=2 (union + per-kind blocks)", n)
+// `troubleshoot` is now its own top-level command (no longer an inspect view).
+// Both shells must complete it as a command with its --ai flag, and must NOT
+// advertise the removed `--troubleshoot` inspect flag anywhere.
+func TestCompletion_TroubleshootCommand(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh"} {
+		s := readCompletionScript(t, "completions/kdiag."+shell)
+		if strings.Contains(s, "--troubleshoot") {
+			t.Errorf("%s script still references the removed --troubleshoot inspect flag", shell)
+		}
+		if !strings.Contains(s, "troubleshoot)") {
+			t.Errorf("%s script missing a troubleshoot command branch", shell)
+		}
+		if !strings.Contains(s, "--ai") {
+			t.Errorf("%s script missing troubleshoot --ai flag", shell)
+		}
 	}
 }
 
@@ -115,7 +112,7 @@ func TestCompletion_TroubleshootFlag(t *testing.T) {
 // matching the bare-banner split (`kdiag -h` shows the full list).
 func TestBashCompletion_HidesMetaTopCommands(t *testing.T) {
 	s := readCompletionScript(t, "completions/kdiag.bash")
-	if !strings.Contains(s, `top_cmds="diff events inspect sort"`) {
+	if !strings.Contains(s, `top_cmds="diff events inspect sort troubleshoot"`) {
 		t.Errorf("bash top_cmds should list only primary commands, got:\n%s",
 			grepLine(s, "top_cmds="))
 	}

@@ -33,7 +33,7 @@ func TestWantsHelp(t *testing.T) {
 // rootCommands is caught even if the renderers happen to read them in
 // insertion order.
 func TestRootCommands_AlphabeticalAndComplete(t *testing.T) {
-	want := []string{"completion", "diff", "events", "help", "inspect", "sort"}
+	want := []string{"completion", "diff", "events", "help", "inspect", "sort", "troubleshoot"}
 	if len(rootCommands) != len(want) {
 		t.Fatalf("rootCommands length = %d, want %d", len(rootCommands), len(want))
 	}
@@ -272,6 +272,21 @@ func TestPrintEventsUsage(t *testing.T) {
 	}
 }
 
+func TestPrintTroubleshootUsage(t *testing.T) {
+	var buf bytes.Buffer
+	PrintTroubleshootUsage(&buf)
+	out := buf.String()
+
+	for _, want := range []string{
+		"troubleshoot", "--ai", "sre-debug-v2", "--namespace", "--label", "--yaml",
+		"Examples:", "kdiag troubleshoot pod my-pod",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("PrintTroubleshootUsage missing %q\n%s", want, out)
+		}
+	}
+}
+
 // Every per-command help text must drop the single-dash short aliases from
 // the documented body. The shorts continue to work at parse time, they
 // just aren't advertised — guard against accidentally reintroducing them.
@@ -290,6 +305,7 @@ func TestUsageText_NoDocumentedShortFlags(t *testing.T) {
 		{"PrintCompletionUsage", func(b *bytes.Buffer) { PrintCompletionUsage(b) }},
 		{"PrintSortUsage", func(b *bytes.Buffer) { PrintSortUsage(b) }},
 		{"PrintEventsUsage", func(b *bytes.Buffer) { PrintEventsUsage(b) }},
+		{"PrintTroubleshootUsage", func(b *bytes.Buffer) { PrintTroubleshootUsage(b) }},
 		{"PrintYMLPathTopic", func(b *bytes.Buffer) { PrintYMLPathTopic(b) }},
 	}
 	// Tokens that would appear as documented short-flag mentions: space- or
@@ -324,7 +340,6 @@ func TestViewFlagSeen(t *testing.T) {
 		{"resources", []string{"--resources"}, "resources"},
 		{"deployment-spec", []string{"--deployment-spec"}, "deployment-spec"},
 		{"az", []string{"--az"}, "az"},
-		{"troubleshoot", []string{"--troubleshoot"}, "troubleshoot"},
 		{"first wins when multiple present", []string{"--resources", "--az"}, "resources"},
 		{"path wins when first", []string{"--path", "x", "--resources"}, "path"},
 	}
@@ -341,7 +356,7 @@ func TestPrintInspectUsage_NoViewShowsAll(t *testing.T) {
 	var b bytes.Buffer
 	PrintInspectUsage(&b, nil)
 	out := b.String()
-	for _, flag := range []string{"--path", "--yaml", "--resources", "--deployment-spec", "--az", "--troubleshoot"} {
+	for _, flag := range []string{"--path", "--yaml", "--resources", "--deployment-spec", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}

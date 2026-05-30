@@ -4,7 +4,7 @@
 # `make cluster-up` labels the workers with distinct zones/instance types (so
 # --az is meaningful), keeps worker + worker2 schedulable (runtime/workload
 # scenarios + zone spread land there), and turns worker3 into the "broken node"
-# demo (cordoned + tainted) for `inspect node --troubleshoot`.
+# demo (cordoned + tainted) for `kdiag troubleshoot node`.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
