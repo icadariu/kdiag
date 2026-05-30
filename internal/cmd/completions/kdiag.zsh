@@ -35,7 +35,7 @@ _kdiag_at_flag_value() {
     local prev_idx=$((_kdiag_all_current - 1))
     (( prev_idx >= 1 )) || return 1
     case "${_kdiag_all_words[prev_idx]}" in
-        -n|--namespace|-l|--label|--path|-o|--output) return 0 ;;
+        -n|--namespace|-l|--label|--path) return 0 ;;
     esac
     return 1
 }
@@ -52,7 +52,7 @@ _kdiag_find_kind_for() {
             continue
         fi
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--path|-o|--output)
+            -n|--namespace|-l|--label|--path)
                 # Flag that takes a value — skip both flag and value.
                 ((i++))
                 ;;
@@ -98,7 +98,7 @@ _kdiag_count_positionals() {
         fi
         if (( ! found_kind )); then
             case "${_kdiag_all_words[i]}" in
-                -n|--namespace|-l|--label|--path|-o|--output)
+                -n|--namespace|-l|--label|--path)
                     ((i++))
                     ;;
                 -*)
@@ -115,7 +115,7 @@ _kdiag_count_positionals() {
         fi
         # We have found both the subcommand and the kind. Now we count positionals after the kind.
         case "${_kdiag_all_words[i]}" in
-            -n|--namespace|-l|--label|--path|-o|--output)
+            -n|--namespace|-l|--label|--path)
                 ((i++))
                 ;;
             -*)
@@ -226,7 +226,8 @@ _kdiag() {
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                 '--az[Show availability-zone placement]'
             )
             ;;
@@ -234,28 +235,32 @@ _kdiag() {
             inspect_flags=(
                 $shared_flags
                 '--deployment-spec[deploy: print .spec.template.spec (structured)]'
-                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
             )
             ;;
         az)
             inspect_flags=(
                 $shared_flags
                 '--az[Show availability-zone placement]'
-                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
             )
             ;;
         pods)
             inspect_flags=(
                 $shared_flags
                 '--pods[node: list non-terminated pods with resource usage]'
-                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
             )
             ;;
         *)
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                 '--path[Walk YAML and print yq paths matching a key or value]'
                 '--az[Show availability-zone placement]'
                 '--deployment-spec[deploy: print .spec.template.spec (structured)]'
@@ -325,7 +330,8 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -333,14 +339,16 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                             '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                         )
@@ -359,7 +367,8 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -367,21 +376,24 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--deployment-spec[deploy: print .spec.template.spec (structured)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                         )
                                         ;;
                                     az)
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                             '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                             '--deployment-spec[deploy: print .spec.template.spec (structured)]'
@@ -401,7 +413,8 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                             '--az[Show availability-zone placement]'
                                         )
                                         ;;
@@ -409,14 +422,16 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--az[Show availability-zone placement]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                         )
                                         ;;
                                     *)
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                            '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                            '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                             '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                         )
@@ -426,7 +441,8 @@ _kdiag() {
                             node)
                                 kflags=(
                                     $shared_flags
-                                    '(-o --output)'{-o,--output}'[Output format: json|yaml]:format:(json yaml)'
+                                    '(--yaml --yml)--yaml[Emit YAML instead of text]'
+                                    '(--yaml --yml)--yml[Emit YAML (alias of --yaml)]'
                                     '--pods[node: list non-terminated pods with resource usage]'
                                 )
                                 ;;

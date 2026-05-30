@@ -122,7 +122,7 @@ Flags:
   <partial-name>         Partial pod name match (pod only)
 `)
 	if showFormat(seen) {
-		fmt.Fprintln(w, "  --output <json|yaml>   Output format (default: text)")
+		fmt.Fprintln(w, "  --yaml, --yml          Emit YAML instead of text (default: text)")
 	}
 	if showPath(seen) {
 		fmt.Fprintln(w, "  --path <needle>        Only print yq paths matching <needle> (kdiag help yml-path for details)")
@@ -135,7 +135,7 @@ Flags:
 	}
 	if showAZ(seen) {
 		fmt.Fprint(w, `  --az                   Availability-zone placement (pod, deploy, ds, sts).
-                         Composes with -o/--output; mutually exclusive with
+                         Composes with --yaml/--yml; mutually exclusive with
                          --resources / --deployment-spec / --path (each selects a view).
 `)
 	}
@@ -151,9 +151,9 @@ Flags:
 // Composition rules for view selectors:
 //   none seen        → show everything
 //   path             → show only --namespace, --label, --path
-//   resources        → show --resources, -o/--output, --az; hide --path, --deployment-spec
-//   deployment-spec  → show --deployment-spec, -o/--output; hide --path, --resources, --az
-//   az               → show --az, -o/--output; hide --path, --resources, --deployment-spec
+//   resources        → show --resources, --yaml/--yml, --az; hide --path, --deployment-spec
+//   deployment-spec  → show --deployment-spec, --yaml/--yml; hide --path, --resources, --az
+//   az               → show --az, --yaml/--yml; hide --path, --resources, --deployment-spec
 func showPath(seen string) bool      { return seen == "" || seen == "path" }
 func showFormat(seen string) bool    { return seen != "path" }
 func showResources(seen string) bool { return seen == "" || seen == "resources" }
@@ -170,22 +170,22 @@ func inspectExamples(seen string) []string {
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect deploy my-deploy --resources -o yaml",
+			"  kdiag inspect deploy my-deploy --resources --yaml",
 		}
 	case "deployment-spec":
 		return []string{
 			"  kdiag inspect deploy my-deploy --deployment-spec",
-			"  kdiag inspect deploy my-deploy --deployment-spec -o yaml",
+			"  kdiag inspect deploy my-deploy --deployment-spec --yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
-			"  kdiag inspect deploy my-deploy --az -o yaml",
+			"  kdiag inspect deploy my-deploy --az --yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect deploy my-deploy --resources -o yaml",
+			"  kdiag inspect deploy my-deploy --resources --yaml",
 			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}
@@ -208,7 +208,7 @@ Matching:
 
 Compatibility:
   --path composes with --namespace and --label.
-  --path is mutually exclusive with -o/--output, --resources, --deployment-spec,
+  --path is mutually exclusive with --yaml/--yml, --resources, --deployment-spec,
   --az (each selects a different view).
 
 Examples:

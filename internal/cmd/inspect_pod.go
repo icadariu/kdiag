@@ -21,12 +21,12 @@ func runInspectPod(args []string) {
 	var (
 		selector string
 		showAZ   bool
-		output   string
 	)
+	wantYAML := func() bool { return false }
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
 	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
+		wantYAML = registerYAMLFlag(fs)
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
 		// extractPathArgs rejects --resources with --path explicitly,
@@ -55,12 +55,7 @@ func runInspectPod(args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
-	switch output {
-	case "", "json", "yaml":
-	default:
-		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
-	}
-	structured := output != ""
+	structured := wantYAML()
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
@@ -106,13 +101,13 @@ func runInspectPod(args []string) {
 		case 1:
 			switch {
 			case showAZ && structured:
-				emit(output, collectAZ(env, ctx, matches))
+				emit(collectAZ(env, ctx, matches))
 			case showAZ:
 				printAZTable(env, ctx, matches)
 			case structured && *showResources:
-				emit(output, resourceSliceFor(matches[0]))
+				emit(resourceSliceFor(matches[0]))
 			case structured:
-				emit(output, podInfoFrom(matches[0]))
+				emit(podInfoFrom(matches[0]))
 			default:
 				inspectPodObject(matches[0], *showResources)
 			}
@@ -141,7 +136,7 @@ func runInspectPod(args []string) {
 	}
 	switch {
 	case showAZ && structured:
-		emit(output, collectAZ(env, ctx, pods.Items))
+		emit(collectAZ(env, ctx, pods.Items))
 	case showAZ:
 		printAZTable(env, ctx, pods.Items)
 	case structured && *showResources:
@@ -149,13 +144,13 @@ func runInspectPod(args []string) {
 		for _, p := range pods.Items {
 			all = append(all, resourceSliceFor(p)...)
 		}
-		emit(output, all)
+		emit(all)
 	case structured:
 		out := make([]podInfo, 0, len(pods.Items))
 		for _, p := range pods.Items {
 			out = append(out, podInfoFrom(p))
 		}
-		emit(output, out)
+		emit(out)
 	default:
 		for i := range pods.Items {
 			p := pods.Items[i]
@@ -271,14 +266,14 @@ func printInspectPodHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	fmt.Fprintln(w, "Usage: kdiag inspect pod [flags] [<partial-pod-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow container state for one pod or a set of pods.")
 	if seen != "path" {
-		fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured doc (map for one pod, list for many).")
+		fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML doc (map for one pod, list for many).")
 	}
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  -o/--output composes with --resources and --az; --path takes only --namespace/--label.")
+		fmt.Fprintln(w, "  --yaml/--yml composes with --resources and --az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
@@ -298,17 +293,17 @@ func podExamples(seen string) []string {
 	case "resources":
 		return []string{
 			"  kdiag inspect pod my-pod --resources",
-			"  kdiag inspect pod my-pod --resources -o yaml",
+			"  kdiag inspect pod my-pod --resources --yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
-			"  kdiag inspect pod --az -o yaml --label app=my-app",
+			"  kdiag inspect pod --az --yaml --label app=my-app",
 		}
 	default:
 		return []string{
 			"  kdiag inspect pod my-pod",
-			"  kdiag inspect pod --label app=my-app -o yaml",
+			"  kdiag inspect pod --label app=my-app --yaml",
 			"  kdiag inspect pod --az --namespace my-ns --label app=my-app",
 		}
 	}

@@ -27,10 +27,10 @@ func runInspectNode(args []string) {
 	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (ignored — node is cluster-scoped)")
 	var selector string
 	fs.StringVarP(&selector, "label", "l", "", "label selector")
-	var output string
 	var showPods bool
+	wantYAML := func() bool { return false }
 	if cli.ViewFlagSeen(args) != "path" {
-		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
+		wantYAML = registerYAMLFlag(fs)
 		fs.BoolVar(&showPods, "pods", false, "list non-terminated pods scheduled on the node (text or structured)")
 	}
 	fs.Usage = func() { printInspectNodeHelp(os.Stderr, fs, args) }
@@ -55,12 +55,7 @@ func runInspectNode(args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
-	switch output {
-	case "", "json", "yaml":
-	default:
-		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
-	}
-	structured := output != ""
+	structured := wantYAML()
 	selector = strings.TrimSpace(selector)
 
 	if len(rest) > 0 && selector != "" {
@@ -110,14 +105,14 @@ func runInspectNode(args []string) {
 		pods := podList.Items
 		if structured {
 			if len(nodes) == 1 && len(rest) == 1 {
-				emit(output, nodePodsViewFrom(nodes[0], pods))
+				emit(nodePodsViewFrom(nodes[0], pods))
 				return
 			}
 			views := make([]nodePodsView, 0, len(nodes))
 			for _, n := range nodes {
 				views = append(views, nodePodsViewFrom(n, pods))
 			}
-			emit(output, views)
+			emit(views)
 			return
 		}
 		for i := range nodes {
@@ -128,14 +123,14 @@ func runInspectNode(args []string) {
 	}
 	if structured {
 		if len(nodes) == 1 && len(rest) == 1 {
-			emit(output, nodeInfoFrom(nodes[0]))
+			emit(nodeInfoFrom(nodes[0]))
 			return
 		}
 		infos := make([]nodeInfo, 0, len(nodes))
 		for _, n := range nodes {
 			infos = append(infos, nodeInfoFrom(n))
 		}
-		emit(output, infos)
+		emit(infos)
 		return
 	}
 	for i := range nodes {
@@ -145,7 +140,7 @@ func runInspectNode(args []string) {
 	}
 }
 
-// nodeInfo is the kdiag-shaped structured payload for `inspect node -o json|yaml`.
+// nodeInfo is the kdiag-shaped structured payload for `inspect node --yaml`.
 // Mirrors what printNodeBlock prints in text mode — NOT the raw corev1.Node
 // (use kubectl for that).
 type nodeInfo struct {
@@ -202,7 +197,7 @@ func printNodeBlock(n corev1.Node) {
 	cli.PrintKVBlock(os.Stdout, "    ", kube.AllocatableMap(n.Status.Capacity))
 }
 
-// nodePodsView is the structured payload for `inspect node --pods -o json|yaml`.
+// nodePodsView is the structured payload for `inspect node --pods --yaml`.
 // Per-pod rows carry plain quantity strings (e.g. "100m"); percentages are not
 // duplicated per row — the node's allocatable is included so consumers can
 // recompute, and the headline percentages live in Allocated. The text view
@@ -344,7 +339,7 @@ func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	if seen == "path" {
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	} else {
-		fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured document.")
+		fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML document.")
 		fmt.Fprintln(w, "View: --pods lists the non-terminated pods scheduled on the node (all namespaces),")
 		fmt.Fprintln(w, "      with CPU/memory requests & limits as a % of node allocatable, plus a totals summary.")
 	}
@@ -357,7 +352,7 @@ func printInspectNodeHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 		fmt.Fprintln(w, "  kdiag inspect node --label topology.kubernetes.io/zone=eu-west-1a --path taints")
 	default:
 		fmt.Fprintln(w, "  kdiag inspect node my-node")
-		fmt.Fprintln(w, "  kdiag inspect node my-node -o yaml")
+		fmt.Fprintln(w, "  kdiag inspect node my-node --yaml")
 		fmt.Fprintln(w, "  kdiag inspect node my-node --pods")
 		fmt.Fprintln(w, "  kdiag inspect node")
 	}
