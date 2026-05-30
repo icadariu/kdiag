@@ -53,13 +53,8 @@ Per-container output:
 Pass `--az` to show a POD/NODE/ZONE table and per-zone count summary
 instead of container state.
 
-Pass `--troubleshoot` to diagnose problems. It is a **universal view available
-on every `inspect` kind** (pod/deploy/ds/sts/rs/node) — see
-[Troubleshooting](#troubleshooting-inspect-kind---troubleshoot) below. For a
-pod it splits two ways: an **unscheduled** pod gets the scheduling explainer
-(scheduler's `FailedScheduling` event + constraints + a per-node fit verdict);
-a **scheduled** pod gets runtime diagnosis (CrashLoopBackOff, ImagePullBackOff,
-OOMKilled, non-zero exit, not-ready) plus recent Warning events.
+For diagnosis, use `kdiag troubleshoot` — see
+[`kdiag troubleshoot`](#kdiag-troubleshoot) below.
 
 #### Pod output flags
 
@@ -69,17 +64,14 @@ there is no JSON output.
 `--resources` narrows the output to per-container resource info (text or structured).
 `--path <keyword>` finds all paths matching the keyword.
 `--az` composes with `--yaml` (emits `{placements, zoneSummary}`); it is
-mutually exclusive with `--resources` / `--troubleshoot` / `--path` since each
+mutually exclusive with `--resources` / `--path` since each
 of those selects a different view.
-`--troubleshoot` composes with `--yaml` (emits the diagnostic report as a
-structured document) and is mutually exclusive with the other views.
 
 | Flag | Description |
 | ---- | ----------- |
 | `--yaml` | Emit a structured YAML document (default: text) |
 | `--resources` | Narrow output to per-container resource info (text or structured) |
 | `--az` | POD/NODE/ZONE placement table and per-zone summary |
-| `--troubleshoot` | Diagnose scheduling/runtime problems (text or structured) |
 | `--path <keyword>` | Find all paths matching the keyword in the YAML |
 
 Output includes init containers and sidecar containers (initContainer with
@@ -110,11 +102,6 @@ kdiag inspect pod my-pod --yaml | yq '.containers[].name'
 # Resources for every matching pod as a YAML list
 kdiag inspect pod --label 'app=gateway-proxy' --resources --yaml | yq '.[0].name'
 
-# Troubleshoot a pod (scheduling when pending, runtime health when scheduled)
-kdiag inspect pod my-pod --troubleshoot --namespace example-system
-
-# Troubleshoot report as structured YAML
-kdiag inspect pod my-pod --troubleshoot --yaml | yq '.verdict'
 ```
 
 ---
@@ -258,48 +245,71 @@ kdiag inspect node my-node --pods --yaml
 
 ---
 
-### Troubleshooting (`inspect <kind> --troubleshoot`)
+### `kdiag troubleshoot`
 
-`--troubleshoot` is a universal view available on **every** `inspect` kind. It
-answers "what's wrong with this thing?" by fusing data kdiag already reads, and
-adapts to the kind:
+Diagnose problems with a Kubernetes resource. Answers "what's wrong with this thing?" by
+fusing data kdiag already reads, adapted to the kind.
 
-- **pod** — if the pod is **unscheduled**, prints the scheduling explainer: the
-  kube-scheduler's own `FailedScheduling` event, the pod's scheduling
-  constraints, and a per-node fit verdict for the predicates kdiag re-derives
-  itself (resource fit, taints vs tolerations, `nodeSelector`, required
-  `nodeAffinity`, cordoned, `NotReady`). The harder predicates (inter-pod
-  affinity, topology spread, PV zone binding) are flagged as *deferred* — kdiag
-  surfaces that they exist but leaves the verdict to the scheduler message. If
-  every kdiag-checked predicate passes on a node yet the pod is still
-  unscheduled, that positively points at one of the deferred predicates. If the
-  pod is **scheduled**, prints runtime diagnosis: CrashLoopBackOff,
-  ImagePullBackOff, OOMKilled, non-zero exit, running-but-not-ready, prior
-  crashes, plus recent Warning events. A healthy pod reports "No problems
-  detected."
-- **deploy / ds / sts / rs** — prints a replica-health header (desired / ready /
-  …) and a verdict (`Healthy` / `Degraded`), then drills into each unhealthy
-  managed pod with the pod troubleshooter above.
-- **node** — prints node-level health: `NotReady` (with reason), memory/disk/PID
-  pressure, cordoned (scheduling disabled), and the taints that restrict
-  scheduling.
+```text
+kdiag troubleshoot <kind> [<name> | --label <selector>] [--namespace <ns>] [--yaml] [--ai[=provider]]
+```
 
-`--troubleshoot` composes with `--yaml` (structured report) and is mutually
-exclusive with the other views. With no name, pod/node troubleshoot every
-resource in scope; workloads require a `<name>`.
+**Kinds:** `pod`, `deploy` (or `deployment`), `ds` (or `daemonset`), `sts` (or `statefulset`),
+`rs` (or `replicaset`), `node`.
+
+**Behavior:**
+
+- **pod** — if **unscheduled**, prints the scheduling explainer: the
+  kube-scheduler's own `FailedScheduling` event, the pod's scheduling constraints, and a
+  per-node fit verdict for the predicates kdiag re-derives itself (resource fit, taints vs
+  tolerations, `nodeSelector`, required `nodeAffinity`, cordoned, `NotReady`). The harder
+  predicates (inter-pod affinity, topology spread, PV zone binding) are flagged as *deferred*
+  — kdiag surfaces that they exist but leaves the verdict to the scheduler message. If the
+  pod is **scheduled**, prints runtime diagnosis: CrashLoopBackOff, ImagePullBackOff,
+  OOMKilled, non-zero exit, running-but-not-ready, prior crashes, plus recent Warning
+  events. A healthy pod reports "No problems detected."
+- **deploy / ds / sts / rs** — prints a replica-health header (desired / ready / …) and a
+  verdict (`Healthy` / `Degraded`), then drills into each unhealthy managed pod with the
+  pod troubleshooter above.
+- **node** — prints node-level health: `NotReady` (with reason), memory/disk/PID pressure,
+  cordoned (scheduling disabled), and the taints that restrict scheduling.
+
+#### Output flags
+
+`--yaml` emits the diagnostic report as a structured YAML document. Default output is text.
+kdiag emits YAML only; there is no JSON output.
+
+`--ai[=provider]` emits a read-only, paste-ready SRE troubleshooting prompt to stdout,
+containing kdiag's diagnostic report (YAML) plus context pointing at the `sre-debug-v2`
+skill as the methodology reference. The bare form (`--ai`) uses the default prompt backend.
+`--ai=claude` / `--ai=gemini` / `--ai=chatgpt` are reserved to launch that CLI in read-only
+mode in the future (currently a "not implemented yet" notice; tracked in #36). The `=` form
+is required when specifying a provider.
+
+`--ai` and `--yaml` are mutually exclusive.
+
+With no name, pod/node troubleshoot every resource in scope; workloads require a `<name>`.
+
+### `kdiag troubleshoot` examples
 
 ```sh
 # Why is this pod pending / unhealthy?
-kdiag inspect pod my-pod --troubleshoot -n my-ns
+kdiag troubleshoot pod my-pod -n my-ns
 
 # Which pods under this deployment are broken, and why?
-kdiag inspect deploy my-deploy --troubleshoot -n my-ns
+kdiag troubleshoot deploy my-deploy -n my-ns
 
 # Node health across the cluster
-kdiag inspect node --troubleshoot
+kdiag troubleshoot node
 
 # Structured output (pipe to yq)
-kdiag inspect pod my-pod --troubleshoot --yaml | yq '.verdict, .issues'
+kdiag troubleshoot pod my-pod --yaml | yq '.verdict, .issues'
+
+# Paste-ready SRE prompt for debugging
+kdiag troubleshoot pod my-pod --ai
+
+# Future: launch Claude in read-only mode (not yet implemented)
+kdiag troubleshoot pod my-pod --ai=claude
 ```
 
 ---
@@ -814,7 +824,7 @@ the cluster lifecycle. `make cluster-up` creates a **4-node** cluster (1
 control-plane + 3 workers, defined in `test/kind-config.yaml`): worker/worker2
 are labelled with distinct zones + instance types and stay schedulable, while
 worker3 is cordoned and tainted to serve as a "broken node" for
-`inspect node --troubleshoot`.
+`kdiag troubleshoot node`.
 
 ```sh
 # 1. Create the kind cluster and apply test fixtures
@@ -851,7 +861,7 @@ Test fixtures live in `test/fixtures/kdiag-test.yaml` and create a dedicated
 #### Manual-testing scenarios
 
 `make cluster-up` also applies `test/fixtures/scenarios.yaml` — a playground for
-exercising `--troubleshoot` by hand (these resources are **not** used by the
+exercising `kdiag troubleshoot` by hand (these resources are **not** used by the
 integration tests; many are deliberately broken and never become Ready):
 
 - `kdiag-scheduling` — unschedulable pods: `sched-nodeselector`, `sched-cpu`,

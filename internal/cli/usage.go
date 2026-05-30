@@ -40,12 +40,13 @@ var rootCommands = []rootCommand{
 	{Name: "help", Desc: "Show help for a command or topic (e.g. kdiag help inspect)", Meta: true},
 	{Name: "inspect", Desc: "Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement"},
 	{Name: "sort", Desc: "Sort resources by creation date (newest last)"},
+	{Name: "troubleshoot", Desc: "Diagnose problems (pod, deploy, ds, sts, rs, node); --ai for AI-assisted analysis"},
 }
 
 // printCommandList renders the alphabetically-sorted Available Commands
 // block. When includeMeta is false, housekeeping commands (completion, help)
 // are dropped — that's the bare-banner shape. Column width is fixed wide
-// enough for the longest current name ("completion", 10 chars) plus a
+// enough for the longest current name ("troubleshoot", 12 chars) plus a
 // 3-space gap.
 func printCommandList(w io.Writer, includeMeta bool) {
 	fmt.Fprintln(w, "Available Commands:")
@@ -53,7 +54,7 @@ func printCommandList(w io.Writer, includeMeta bool) {
 		if !includeMeta && c.Meta {
 			continue
 		}
-		fmt.Fprintf(w, "  %-13s%s\n", c.Name, c.Desc)
+		fmt.Fprintf(w, "  %-15s%s\n", c.Name, c.Desc)
 	}
 }
 
@@ -139,10 +140,6 @@ Flags:
                          --resources / --deployment-spec / --path (each selects a view).
 `)
 	}
-	if showTroubleshoot(seen) {
-		fmt.Fprintln(w, "  --troubleshoot         Diagnose problems (any kind): pod scheduling/runtime, workload")
-		fmt.Fprintln(w, "                         replica health, or node health (text or structured)")
-	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Examples:")
 	for _, ex := range inspectExamples(seen) {
@@ -159,12 +156,11 @@ Flags:
 //	resources        → show --resources, --yaml, --az; hide --path, --deployment-spec
 //	deployment-spec  → show --deployment-spec, --yaml; hide --path, --resources, --az
 //	az               → show --az, --yaml; hide --path, --resources, --deployment-spec
-func showPath(seen string) bool         { return seen == "" || seen == "path" }
-func showFormat(seen string) bool       { return seen != "path" }
-func showResources(seen string) bool    { return seen == "" || seen == "resources" }
-func showSpec(seen string) bool         { return seen == "" || seen == "deployment-spec" }
-func showAZ(seen string) bool           { return seen == "" || seen == "az" || seen == "resources" }
-func showTroubleshoot(seen string) bool { return seen == "" || seen == "troubleshoot" }
+func showPath(seen string) bool      { return seen == "" || seen == "path" }
+func showFormat(seen string) bool    { return seen != "path" }
+func showResources(seen string) bool { return seen == "" || seen == "resources" }
+func showSpec(seen string) bool      { return seen == "" || seen == "deployment-spec" }
+func showAZ(seen string) bool        { return seen == "" || seen == "az" || seen == "resources" }
 
 func inspectExamples(seen string) []string {
 	switch seen {
@@ -356,11 +352,43 @@ Examples:
 `)
 }
 
+// PrintTroubleshootUsage prints help for `kdiag troubleshoot`.
+func PrintTroubleshootUsage(w io.Writer) {
+	fmt.Fprint(w, `Diagnose problems with a Kubernetes resource.
+
+Kind-aware: a pod gets scheduling diagnosis (when unscheduled) or runtime health
+(when scheduled, plus recent Warning events); a workload (deploy, ds, sts, rs)
+reports replica health and drills into each unhealthy managed pod; a node reports
+conditions, cordon status, and taints.
+
+Usage:
+  kdiag troubleshoot <kind> [<name> | --label <selector>] [flags]
+
+Flags:
+  --namespace <ns>     Namespace (defaults to current context)
+  --label <selector>   Label selector (pod, node)
+  --yaml               Emit YAML instead of text (default: text)
+  --ai[=provider]      AI-assisted, read-only analysis. Bare --ai prints a
+                       paste-ready prompt (kdiag's report + a preamble pointing
+                       the assistant at the sre-debug-v2 skill) to stdout.
+                       --ai=claude|gemini|chatgpt will launch that CLI (planned).
+                       Use the = form for a provider; bare --ai uses the prompt.
+                       Mutually exclusive with --yaml.
+
+Examples:
+  kdiag troubleshoot pod my-pod
+  kdiag troubleshoot deploy my-deploy
+  kdiag troubleshoot node my-node
+  kdiag troubleshoot pod my-pod --ai            # paste-ready prompt to stdout
+  kdiag troubleshoot pod my-pod --ai | claude   # pipe into an assistant
+`)
+}
+
 // ViewFlagSeen scans args for the first view-selector flag and returns its
-// short name ("path", "resources", "deployment-spec", "az", "troubleshoot") or
-// "" if none is present. Accepts both the space-separated form (--path x) and
-// the inline form (--path=x). Used by help printers and the completion scripts
-// (transitively) to filter what gets suggested once a view is set.
+// short name ("path", "resources", "deployment-spec", "az") or "" if none is
+// present. Accepts both the space-separated form (--path x) and the inline form
+// (--path=x). Used by help printers and the completion scripts (transitively) to
+// filter what gets suggested once a view is set.
 func ViewFlagSeen(args []string) string {
 	for _, a := range args {
 		switch {
@@ -372,8 +400,6 @@ func ViewFlagSeen(args []string) string {
 			return "deployment-spec"
 		case a == "--az":
 			return "az"
-		case a == "--troubleshoot":
-			return "troubleshoot"
 		}
 	}
 	return ""

@@ -2,9 +2,9 @@
 # by `make cluster-up` (best-effort — many of these pods are DELIBERATELY broken
 # and will never become Ready, so cluster-up does not wait on them).
 #
-#   kdiag-scheduling  → `inspect pod --troubleshoot` (unschedulable pods)
-#   kdiag-runtime     → `inspect pod --troubleshoot` (crashloop/imagepull/oom/not-ready)
-#   kdiag-workloads   → `inspect deploy|ds|sts --troubleshoot`, `inspect ... --resources/--az`
+#   kdiag-scheduling  → `kdiag troubleshoot pod` (unschedulable pods)
+#   kdiag-runtime     → `kdiag troubleshoot pod` (crashloop/imagepull/oom/not-ready)
+#   kdiag-workloads   → `kdiag troubleshoot deploy|ds|sts`, `inspect ... --resources/--az`
 #
 # This file is NOT used by the integration tests (those use kdiag-test.yaml); it
 # exists purely so a freshly-created cluster is a ready playground.
@@ -135,7 +135,7 @@ spec:
         periodSeconds: 5
 # ── kdiag-workloads ──────────────────────────────────────────────────────────
 ---
-# Healthy deployment (2/2 ready) — `inspect deploy --troubleshoot` → Healthy.
+# Healthy deployment (2/2 ready) — `kdiag troubleshoot deploy` → Healthy.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -157,7 +157,7 @@ spec:
             requests: { cpu: 10m, memory: 16Mi }
 ---
 # Degraded deployment: image tag does not exist, so no pod becomes ready —
-# `inspect deploy --troubleshoot` → Degraded with per-pod ImagePullBackOff.
+# `kdiag troubleshoot deploy` → Degraded with per-pod ImagePullBackOff.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -176,7 +176,7 @@ spec:
         - name: app
           image: nginx:this-tag-does-not-exist-kdiag
 ---
-# Healthy DaemonSet (one pod per schedulable node) — `inspect ds --troubleshoot`.
+# Healthy DaemonSet (one pod per schedulable node) — `kdiag troubleshoot ds`.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -198,7 +198,7 @@ spec:
           resources:
             requests: { cpu: 10m, memory: 16Mi }
 ---
-# Healthy StatefulSet — `inspect sts --troubleshoot`.
+# Healthy StatefulSet — `kdiag troubleshoot sts`.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

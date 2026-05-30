@@ -253,12 +253,12 @@ func TestInspectPod_AZ_YAML(t *testing.T) {
 	}
 }
 
-// `inspect pod --troubleshoot` on an unschedulable pod produces the scheduling
+// `troubleshoot pod` on an unschedulable pod produces the scheduling
 // explainer. Asserts the kdiag-derived parts (deterministic, no event race):
 // the unscheduled header, the Scheduler section, the nodeSelector blocker, and
 // the cpu shortfall.
 func TestInspectPod_Troubleshoot_Scheduling(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-unschedulable", "--troubleshoot", "-n", "kdiag-test")
+	out, _, code := run("troubleshoot", "pod", "kdiag-unschedulable", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -276,10 +276,10 @@ func TestInspectPod_Troubleshoot_Scheduling(t *testing.T) {
 	}
 }
 
-// `inspect pod --troubleshoot --yaml` on an unschedulable pod nests the
+// `troubleshoot pod --yaml` on an unschedulable pod nests the
 // scheduling report; every node must be reported as not fitting with a blocker.
 func TestInspectPod_Troubleshoot_Scheduling_YAML(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-unschedulable", "--troubleshoot", "--yaml", "-n", "kdiag-test")
+	out, _, code := run("troubleshoot", "pod", "kdiag-unschedulable", "--yaml", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -313,9 +313,9 @@ func TestInspectPod_Troubleshoot_Scheduling_YAML(t *testing.T) {
 	}
 }
 
-// `inspect pod --troubleshoot` on a crashlooping pod reports the runtime issue.
+// `troubleshoot pod` on a crashlooping pod reports the runtime issue.
 func TestInspectPod_Troubleshoot_Runtime(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-crasher", "--troubleshoot", "-n", "kdiag-test")
+	out, _, code := run("troubleshoot", "pod", "kdiag-crasher", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -327,9 +327,9 @@ func TestInspectPod_Troubleshoot_Runtime(t *testing.T) {
 	}
 }
 
-// `inspect pod --troubleshoot` on a healthy pod reports no problems.
+// `troubleshoot pod` on a healthy pod reports no problems.
 func TestInspectPod_Troubleshoot_Healthy(t *testing.T) {
-	out, _, code := run("inspect", "pod", "kdiag-static", "--troubleshoot", "-n", "kdiag-test")
+	out, _, code := run("troubleshoot", "pod", "kdiag-static", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -338,9 +338,9 @@ func TestInspectPod_Troubleshoot_Healthy(t *testing.T) {
 	}
 }
 
-// `inspect deploy --troubleshoot` reports replica health for a healthy deployment.
+// `troubleshoot deploy` reports replica health for a healthy deployment.
 func TestInspectDeploy_Troubleshoot(t *testing.T) {
-	out, _, code := run("inspect", "deploy", "test-app", "--troubleshoot", "-n", "kdiag-test")
+	out, _, code := run("troubleshoot", "deploy", "test-app", "-n", "kdiag-test")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -349,9 +349,9 @@ func TestInspectDeploy_Troubleshoot(t *testing.T) {
 	}
 }
 
-// `inspect node --troubleshoot` works for the node kind and reports health.
+// `troubleshoot node` works for the node kind and reports health.
 func TestInspectNode_Troubleshoot(t *testing.T) {
-	out, _, code := run("inspect", "node", "--troubleshoot")
+	out, _, code := run("troubleshoot", "node")
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
 	}
@@ -360,11 +360,37 @@ func TestInspectNode_Troubleshoot(t *testing.T) {
 	}
 }
 
-// --troubleshoot is a view selector and must not compose with --resources.
-func TestInspectPod_Troubleshoot_NotWithResources(t *testing.T) {
-	_, errOut, code := run("inspect", "pod", "--troubleshoot", "--resources", "-n", "kdiag-test", "kdiag-static")
+// --troubleshoot was promoted to `kdiag troubleshoot`; the old inspect flag now
+// errors with a pointer to the new command.
+func TestInspect_TroubleshootMoved(t *testing.T) {
+	_, errOut, code := run("inspect", "pod", "kdiag-static", "--troubleshoot", "-n", "kdiag-test")
 	if code == 0 {
-		t.Error("expected non-zero exit when --troubleshoot is combined with --resources")
+		t.Error("expected non-zero exit for the removed inspect --troubleshoot flag")
+	}
+	if !strings.Contains(errOut, "kdiag troubleshoot") {
+		t.Errorf("expected a pointer to `kdiag troubleshoot` in stderr:\n%s", errOut)
+	}
+}
+
+// `troubleshoot --ai` emits a paste-ready, read-only prompt: it references the
+// sre-debug-v2 skill (methodology source of truth) and embeds kdiag's report.
+func TestTroubleshoot_AIPrompt(t *testing.T) {
+	out, _, code := run("troubleshoot", "pod", "kdiag-static", "--ai", "-n", "kdiag-test")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout: %s", code, out)
+	}
+	for _, w := range []string{"sre-debug-v2", "read-only", "kdiag-static"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("prompt missing %q:\n%s", w, out)
+		}
+	}
+}
+
+// `troubleshoot --ai --yaml` is rejected — each selects a different output.
+func TestTroubleshoot_AINotWithYAML(t *testing.T) {
+	_, errOut, code := run("troubleshoot", "pod", "kdiag-static", "--ai", "--yaml", "-n", "kdiag-test")
+	if code == 0 {
+		t.Error("expected non-zero exit when --ai is combined with --yaml")
 	}
 	if !strings.Contains(errOut, "mutually exclusive") {
 		t.Errorf("expected 'mutually exclusive' in stderr:\n%s", errOut)

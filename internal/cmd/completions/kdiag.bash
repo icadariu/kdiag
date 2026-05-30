@@ -60,7 +60,7 @@ _kdiag_has_label() {
     return 1
 }
 
-# Find the index of the kind positional argument under inspect/diff.
+# Find the index of the kind positional argument under inspect/diff/troubleshoot.
 _kdiag_find_kind_idx() {
     local i
     for ((i=2; i<COMP_CWORD; i++)); do
@@ -88,8 +88,8 @@ _kdiag() {
     # Top-level completion suggestions exclude the housekeeping commands
     # (completion, help) — they remain valid invocations, but are hidden
     # from `kdiag <TAB>` to match the bare-banner / -h split.
-    local top_cmds="diff events inspect sort"
-    local help_topics="completion diff events inspect sort yml-path path"
+    local top_cmds="diff events inspect sort troubleshoot"
+    local help_topics="completion diff events inspect sort troubleshoot yml-path path"
     local inspect_kinds="pod deployment daemonset statefulset replicaset node"
     # sort accepts any kind the API server exposes (built-in or CRD); these
     # are just suggestions for tab completion.
@@ -99,9 +99,11 @@ _kdiag() {
     # like — it resolves at runtime via the cluster's discovery doc.
     local diff_kinds="${sort_kinds}"
     local completion_shells="bash zsh"
+    local ai_providers="claude gemini chatgpt"
     local shared_flags="--namespace -n --label -l"
     local events_flags="--namespace -n --all-namespaces -A --since"
     local sort_flags="--namespace -n --all-namespaces -A"
+    local troubleshoot_flags="${shared_flags} --yaml --ai"
 
     # Flag-value completion: when the previous token expects a value.
     case "${prev}" in
@@ -115,6 +117,12 @@ _kdiag() {
             return
             ;;
     esac
+
+    # --ai takes an optional provider via the = form (--ai=claude).
+    if [[ "${cur}" == --ai=* ]]; then
+        COMPREPLY=( $(compgen -W "${ai_providers}" -P "--ai=" -- "${cur#--ai=}") )
+        return
+    fi
 
     if [[ ${cword} -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "${top_cmds}" -- "${cur}") )
@@ -135,7 +143,6 @@ _kdiag() {
             --deployment-spec)   view_seen=spec ;;
             --az)                view_seen=az ;;
             --pods)              view_seen=pods ;;
-            --troubleshoot)      view_seen=troubleshoot ;;
         esac
     done
 
@@ -146,8 +153,7 @@ _kdiag() {
         spec)         inspect_flags="${shared_flags} --deployment-spec --yaml" ;;
         az)           inspect_flags="${shared_flags} --az --yaml" ;;
         pods)         inspect_flags="${shared_flags} --pods --yaml" ;;
-        troubleshoot) inspect_flags="${shared_flags} --troubleshoot --yaml" ;;
-        *)            inspect_flags="${shared_flags} --resources --az --troubleshoot --deployment-spec --pods --yaml --path" ;;
+        *)            inspect_flags="${shared_flags} --resources --az --deployment-spec --pods --yaml --path" ;;
     esac
 
     case "${cmd}" in
@@ -182,6 +188,39 @@ _kdiag() {
                 # Positional cap reached (inspect <kind> accepts one name) —
                 # offer only flags so users don't tack on a second name.
                 COMPREPLY=( $(compgen -W "${inspect_flags}" -- "${cur}") )
+            fi
+            ;;
+        troubleshoot)
+            # kind first (pod/deploy/.../node), then a small flag set. No view
+            # selectors — troubleshoot is its own diagnostic.
+            local kind_idx
+            kind_idx="$(_kdiag_find_kind_idx)"
+            if [[ ${kind_idx} -eq -1 ]]; then
+                if [[ "${cur}" == -* ]]; then
+                    COMPREPLY=( $(compgen -W "${troubleshoot_flags}" -- "${cur}") )
+                else
+                    COMPREPLY=( $(compgen -W "${inspect_kinds}" -- "${cur}") )
+                fi
+                return
+            fi
+            local kind="${COMP_WORDS[kind_idx]}"
+            if [[ "${cur}" == -* ]]; then
+                COMPREPLY=( $(compgen -W "${troubleshoot_flags}" -- "${cur}") )
+                return
+            fi
+            if _kdiag_has_label; then
+                return
+            fi
+            local pos_count
+            pos_count="$(_kdiag_count_positionals $((kind_idx + 1)))"
+            if [[ ${pos_count} -eq 0 ]]; then
+                local ns
+                ns="$(_kdiag_extract_ns)"
+                local names
+                names="$(kdiag __complete resources "${kind}" "${ns}" "${cur}" 2>/dev/null)"
+                COMPREPLY=( $(compgen -W "${names}" -- "${cur}") )
+            else
+                COMPREPLY=( $(compgen -W "${troubleshoot_flags}" -- "${cur}") )
             fi
             ;;
         diff)

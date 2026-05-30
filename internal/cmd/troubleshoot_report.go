@@ -16,12 +16,12 @@ import (
 	"example.com/kdiag/internal/kube"
 )
 
-// inspect_troubleshoot.go implements `inspect <kind> --troubleshoot`, a
-// kind-aware diagnostic handled centrally in the RunInspect dispatcher (like
-// --path). For a pod it explains scheduling (when unscheduled) or runtime
-// health (when scheduled). For a workload it reports replica health and drills
-// into each unhealthy managed pod. For a node it reports node-level health.
-// The pure builders (buildPodTroubleshoot, classifyWorkloadPods,
+// troubleshoot_report.go holds the diagnostic engine behind the
+// `kdiag troubleshoot <kind>` command (see troubleshoot.go for the entry point).
+// It is kind-aware: for a pod it explains scheduling (when unscheduled) or
+// runtime health (when scheduled); for a workload it reports replica health and
+// drills into each unhealthy managed pod; for a node it reports node-level
+// health. The pure builders (buildPodTroubleshoot, classifyWorkloadPods,
 // buildNodeTroubleshoot) are unit-tested; the thin I/O wrappers are covered by
 // integration tests.
 
@@ -182,99 +182,7 @@ func printWorkloadTroubleshoot(w io.Writer, rep workloadTroubleshoot) {
 	}
 }
 
-// ── arg extraction & dispatch (I/O) ─────────────────────────────────────────
-
-// extractTroubleshootArgs scans handlerArgs for --troubleshoot together with
-// -n/--namespace, -l/--label, and --yaml. Returns ok=false when --troubleshoot
-// is absent so the caller falls through. Errors (combining with another view,
-// unknown flags, multiple names) are fatal once --troubleshoot is seen.
-func extractTroubleshootArgs(handlerArgs []string) (name, selector, ns string, asYAML, ok bool) {
-	var (
-		rest    []string
-		seen    bool
-		unknown string
-	)
-	for i := 0; i < len(handlerArgs); i++ {
-		a := handlerArgs[i]
-		switch {
-		case a == "--troubleshoot":
-			seen = true
-		case a == "--yaml":
-			asYAML = true
-		case a == "-n" || a == "--namespace":
-			if i+1 >= len(handlerArgs) {
-				cli.Fatal(fmt.Errorf("%s requires a value", a))
-			}
-			ns = handlerArgs[i+1]
-			i++
-		case strings.HasPrefix(a, "--namespace="):
-			ns = strings.TrimPrefix(a, "--namespace=")
-		case a == "-l" || a == "--label":
-			if i+1 >= len(handlerArgs) {
-				cli.Fatal(fmt.Errorf("%s requires a value", a))
-			}
-			selector = handlerArgs[i+1]
-			i++
-		case strings.HasPrefix(a, "--label="):
-			selector = strings.TrimPrefix(a, "--label=")
-		case strings.HasPrefix(a, "-"):
-			if unknown == "" {
-				unknown = a
-			}
-		default:
-			rest = append(rest, a)
-		}
-	}
-	if !seen {
-		return "", "", "", false, false
-	}
-	switch unknown {
-	case "--resources", "--deployment-spec", "--az", "--path":
-		cli.Fatal(fmt.Errorf(
-			"--troubleshoot is mutually exclusive with %s (each selects a view). "+
-				"Drop one of them, or run `kdiag inspect <kind> -h` for usage.", unknown))
-	}
-	if unknown != "" {
-		cli.Fatal(fmt.Errorf(
-			"--troubleshoot: unknown flag %q (only -n/--namespace, -l/--label and --yaml compose with it)", unknown))
-	}
-	if len(rest) > 1 {
-		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
-	}
-	if len(rest) == 1 {
-		name = rest[0]
-	}
-	if name != "" && selector != "" {
-		cli.Fatal(fmt.Errorf("--troubleshoot: provide either <name> or --label (not both)"))
-	}
-	return name, selector, ns, asYAML, true
-}
-
-// runInspectTroubleshoot dispatches the troubleshoot view by kind.
-func runInspectTroubleshoot(env *kube.KubeEnv, kind, name, selector string, asYAML bool) {
-	ctx := context.Background()
-	switch kube.CanonicalKind(kind) {
-	case "pod":
-		troubleshootPods(env, ctx, name, selector, asYAML)
-	case "deployment", "daemonset", "statefulset", "replicaset":
-		if name == "" {
-			cli.Fatal(fmt.Errorf("inspect %s --troubleshoot requires a <name>", kind))
-		}
-		if selector != "" {
-			cli.Fatal(fmt.Errorf("--troubleshoot on a workload takes a <name>, not --label"))
-		}
-		rep := troubleshootWorkload(env, ctx, kube.CanonicalKind(kind), name)
-		if asYAML {
-			emit(rep)
-		} else {
-			printWorkloadTroubleshoot(os.Stdout, rep)
-		}
-	case "node":
-		troubleshootNodes(env, ctx, name, selector, asYAML)
-	default:
-		cli.Fatal(fmt.Errorf("unknown inspect kind: %s", kind))
-	}
-}
+// ── collection (I/O) ────────────────────────────────────────────────────────
 
 // troubleshootPod builds one pod's report, performing the I/O its mode needs:
 // a scheduling report when unscheduled, recent warnings when scheduled.
@@ -286,25 +194,32 @@ func troubleshootPod(env *kube.KubeEnv, ctx context.Context, pod corev1.Pod) pod
 	return buildPodTroubleshoot(pod, nil, warningEventsFor(env, ctx, pod))
 }
 
-func troubleshootPods(env *kube.KubeEnv, ctx context.Context, name, selector string, asYAML bool) {
+// collectPodReports resolves the target pods and builds each one's report.
+func collectPodReports(env *kube.KubeEnv, ctx context.Context, name, selector string) []podTroubleshoot {
 	pods := resolvePodsForTroubleshoot(env, ctx, name, selector)
+	out := make([]podTroubleshoot, 0, len(pods))
+	for i := range pods {
+		out = append(out, troubleshootPod(env, ctx, pods[i]))
+	}
+	return out
+}
+
+// renderPodReports prints pod reports as text, or emits YAML. A single named
+// target emits as a scalar document; everything else emits as a list.
+func renderPodReports(reps []podTroubleshoot, name string, asYAML bool) {
 	if asYAML {
-		out := make([]podTroubleshoot, 0, len(pods))
-		for i := range pods {
-			out = append(out, troubleshootPod(env, ctx, pods[i]))
-		}
-		if len(out) == 1 && name != "" {
-			emit(out[0])
+		if len(reps) == 1 && name != "" {
+			emit(reps[0])
 		} else {
-			emit(out)
+			emit(reps)
 		}
 		return
 	}
-	for i := range pods {
+	for i := range reps {
 		if i > 0 {
 			fmt.Println("==========================================")
 		}
-		printPodTroubleshoot(os.Stdout, troubleshootPod(env, ctx, pods[i]))
+		printPodTroubleshoot(os.Stdout, reps[i])
 	}
 }
 
@@ -442,7 +357,8 @@ func workloadForTroubleshoot(ctx context.Context, env *kube.KubeEnv, canonical, 
 	}
 }
 
-func troubleshootNodes(env *kube.KubeEnv, ctx context.Context, name, selector string, asYAML bool) {
+// collectNodeReports resolves the target nodes and builds each one's report.
+func collectNodeReports(env *kube.KubeEnv, ctx context.Context, name, selector string) []nodeTroubleshoot {
 	var nodes []corev1.Node
 	if name != "" {
 		n, err := env.Clientset.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
@@ -457,22 +373,28 @@ func troubleshootNodes(env *kube.KubeEnv, ctx context.Context, name, selector st
 		}
 		nodes = list.Items
 	}
+	out := make([]nodeTroubleshoot, 0, len(nodes))
+	for i := range nodes {
+		out = append(out, buildNodeTroubleshoot(nodes[i]))
+	}
+	return out
+}
+
+// renderNodeReports prints node reports as text, or emits YAML (scalar for a
+// single named target, list otherwise).
+func renderNodeReports(reps []nodeTroubleshoot, name string, asYAML bool) {
 	if asYAML {
-		out := make([]nodeTroubleshoot, 0, len(nodes))
-		for i := range nodes {
-			out = append(out, buildNodeTroubleshoot(nodes[i]))
-		}
-		if len(out) == 1 && name != "" {
-			emit(out[0])
+		if len(reps) == 1 && name != "" {
+			emit(reps[0])
 		} else {
-			emit(out)
+			emit(reps)
 		}
 		return
 	}
-	for i := range nodes {
+	for i := range reps {
 		if i > 0 {
 			fmt.Println("==========================================")
 		}
-		printNodeTroubleshoot(os.Stdout, buildNodeTroubleshoot(nodes[i]))
+		printNodeTroubleshoot(os.Stdout, reps[i])
 	}
 }

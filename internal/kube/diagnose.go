@@ -6,8 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// diagnose.go holds the pure runtime/node diagnostics used by
-// `inspect <kind> --troubleshoot`. They decode container and node status into a
+// diagnose.go holds the pure runtime/node diagnostics used by the
+// `kdiag troubleshoot` command. They decode container and node status into a
 // flat list of human-readable problems. Pure (no client calls), unit-tested.
 
 // PodIssue is a single runtime problem found on a pod, attributed to a

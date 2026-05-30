@@ -41,8 +41,8 @@ _kdiag_at_flag_value() {
 }
 
 # Find the kind (pod/deploy/...) the user typed as the first positional arg
-# to a given subcommand ($1 = "inspect"/"diff"). Skips flags and their values.
-# Reads $_kdiag_all_words. Returns "" if not found.
+# to a given subcommand ($1 = "inspect"/"diff"/"troubleshoot"). Skips flags and
+# their values. Reads $_kdiag_all_words. Returns "" if not found.
 _kdiag_find_kind_for() {
     local subcmd="$1"
     local i found=0
@@ -174,7 +174,6 @@ _kdiag() {
             --deployment-spec)       view_seen=spec ;;
             --az)         view_seen=az ;;
             --pods)       view_seen=pods ;;
-            --troubleshoot) view_seen=troubleshoot ;;
         esac
     done
 
@@ -187,6 +186,7 @@ _kdiag() {
         'events:Show events in the current namespace'
         'inspect:Inspect resources (pod, deploy, ds, sts, rs, node); --az for zone placement'
         'sort:Sort resources by creation date (newest last)'
+        'troubleshoot:Diagnose problems (pod, deploy, ds, sts, rs, node); --ai for AI-assisted analysis'
     )
     help_topics=(
         'completion:Help for completion'
@@ -194,6 +194,7 @@ _kdiag() {
         'events:Help for events'
         'inspect:Help for inspect'
         'sort:Help for sort'
+        'troubleshoot:Help for troubleshoot'
         'yml-path:--path topic page'
         'path:alias for yml-path'
     )
@@ -210,7 +211,7 @@ _kdiag() {
     # Note: the value-spec labels are kept as a single space (": :action") so
     # zsh doesn't render a category header above the candidates. Users want
     # clean kubectl-style lists, not a "namespace"/"file" header.
-    local -a shared_flags inspect_flags events_flags sort_flags
+    local -a shared_flags inspect_flags events_flags sort_flags troubleshoot_flags
     shared_flags=(
         '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
         '(-l --label)'{-l,--label}'[Label selector]: :'
@@ -227,31 +228,28 @@ _kdiag() {
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '(--yaml)--yaml[Emit YAML instead of text]'                '--az[Show availability-zone placement]'
+                '(--yaml)--yaml[Emit YAML instead of text]'
+                '--az[Show availability-zone placement]'
             )
             ;;
         spec)
             inspect_flags=(
                 $shared_flags
                 '--deployment-spec[deploy: print .spec.template.spec (structured)]'
-                '(--yaml)--yaml[Emit YAML instead of text]'            )
+                '(--yaml)--yaml[Emit YAML instead of text]'
+            )
             ;;
         az)
             inspect_flags=(
                 $shared_flags
                 '--az[Show availability-zone placement]'
-                '(--yaml)--yaml[Emit YAML instead of text]'            )
+                '(--yaml)--yaml[Emit YAML instead of text]'
+            )
             ;;
         pods)
             inspect_flags=(
                 $shared_flags
                 '--pods[node: list non-terminated pods with resource usage]'
-                '(--yaml)--yaml[Emit YAML instead of text]'            )
-            ;;
-        troubleshoot)
-            inspect_flags=(
-                $shared_flags
-                '--troubleshoot[Diagnose problems (any kind): scheduling, runtime, node health]'
                 '(--yaml)--yaml[Emit YAML instead of text]'
             )
             ;;
@@ -259,11 +257,11 @@ _kdiag() {
             inspect_flags=(
                 $shared_flags
                 '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                '(--yaml)--yaml[Emit YAML instead of text]'                '--path[Walk YAML and print yq paths matching a key or value]'
+                '(--yaml)--yaml[Emit YAML instead of text]'
+                '--path[Walk YAML and print yq paths matching a key or value]'
                 '--az[Show availability-zone placement]'
                 '--deployment-spec[deploy: print .spec.template.spec (structured)]'
                 '--pods[node: list non-terminated pods with resource usage]'
-                '--troubleshoot[Diagnose problems (any kind): scheduling, runtime, node health]'
             )
             ;;
     esac
@@ -275,6 +273,11 @@ _kdiag() {
     sort_flags=(
         '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
         '(-A --all-namespaces)'{-A,--all-namespaces}'[List resources across all namespaces]'
+    )
+    troubleshoot_flags=(
+        $shared_flags
+        '(--yaml)--yaml[Emit YAML instead of text]'
+        '--ai=-[AI-assisted read-only analysis (bare for paste-ready prompt)]:provider:(claude gemini chatgpt)'
     )
 
     local context state line
@@ -329,19 +332,14 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--az[Show availability-zone placement]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--az[Show availability-zone placement]'
                                         )
                                         ;;
                                     az)
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                        )
-                                        ;;
-                                    troubleshoot)
-                                        kflags=(
-                                            $shared_flags
-                                            '--troubleshoot[Diagnose scheduling/runtime problems]'
                                             '(--yaml)--yaml[Emit YAML instead of text]'
                                         )
                                         ;;
@@ -349,9 +347,9 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--path[Walk YAML and print yq paths matching a key or value]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
-                                            '--troubleshoot[Diagnose scheduling/runtime problems]'
                                         )
                                         ;;
                                 esac
@@ -368,25 +366,21 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--az[Show availability-zone placement]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--az[Show availability-zone placement]'
                                         )
                                         ;;
                                     spec)
                                         kflags=(
                                             $shared_flags
                                             '--deployment-spec[deploy: print .spec.template.spec (structured)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                        )
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                        )
                                         ;;
                                     az)
                                         kflags=(
                                             $shared_flags
                                             '--az[Show availability-zone placement]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                        )
-                                        ;;
-                                    troubleshoot)
-                                        kflags=(
-                                            $shared_flags
-                                            '--troubleshoot[Diagnose workload replica health]'
                                             '(--yaml)--yaml[Emit YAML instead of text]'
                                         )
                                         ;;
@@ -394,10 +388,10 @@ _kdiag() {
                                         kflags=(
                                             $shared_flags
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--path[Walk YAML and print yq paths matching a key or value]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
                                             '--deployment-spec[deploy: print .spec.template.spec (structured)]'
-                                            '--troubleshoot[Diagnose workload replica health]'
                                         )
                                         ;;
                                 esac
@@ -414,19 +408,14 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--az[Show availability-zone placement]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--az[Show availability-zone placement]'
                                         )
                                         ;;
                                     az)
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--az[Show availability-zone placement]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                        )
-                                        ;;
-                                    troubleshoot)
-                                        kflags=(
-                                            '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
-                                            '--troubleshoot[Diagnose workload replica health]'
                                             '(--yaml)--yaml[Emit YAML instead of text]'
                                         )
                                         ;;
@@ -434,26 +423,20 @@ _kdiag() {
                                         kflags=(
                                             '(-n --namespace)'{-n,--namespace}'[Namespace]: :_kdiag_namespaces'
                                             '--resources[Show resource requests/limits as YAML (pod/deploy)]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--path[Walk YAML and print yq paths matching a key or value]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--path[Walk YAML and print yq paths matching a key or value]'
                                             '--az[Show availability-zone placement]'
-                                            '--troubleshoot[Diagnose workload replica health]'
                                         )
                                         ;;
                                 esac
                                 ;;
                             node)
                                 case "${view_seen}" in
-                                    troubleshoot)
-                                        kflags=(
-                                            '--troubleshoot[Diagnose node health]'
-                                            '(--yaml)--yaml[Emit YAML instead of text]'
-                                        )
-                                        ;;
                                     *)
                                         kflags=(
                                             $shared_flags
-                                            '(--yaml)--yaml[Emit YAML instead of text]'                                            '--pods[node: list non-terminated pods with resource usage]'
-                                            '--troubleshoot[Diagnose node health]'
+                                            '(--yaml)--yaml[Emit YAML instead of text]'
+                                            '--pods[node: list non-terminated pods with resource usage]'
                                         )
                                         ;;
                                 esac
@@ -467,6 +450,32 @@ _kdiag() {
                         _arguments -C \
                             "1: :(${inspect_kinds[*]})" \
                             $kflags
+                    fi
+                    ;;
+                troubleshoot)
+                    # troubleshoot <kind> [name] — kind first, then the small
+                    # diagnostic flag set (no inspect view selectors).
+                    local tkind="$(_kdiag_find_kind_for troubleshoot)"
+                    local tcanon
+                    case "$tkind" in
+                        po|pod)            tcanon=pod ;;
+                        deploy|deployment) tcanon=deployment ;;
+                        ds|daemonset)      tcanon=daemonset ;;
+                        sts|statefulset)   tcanon=statefulset ;;
+                        rs|replicaset)     tcanon=replicaset ;;
+                        no|node)           tcanon=node ;;
+                        *)                 tcanon="" ;;
+                    esac
+
+                    if [[ -n "$tcanon" && "$PREFIX" != -* ]] \
+                       && ! _kdiag_at_flag_value \
+                       && ! _kdiag_has_label \
+                       && [[ "$(_kdiag_count_positionals troubleshoot)" -eq 0 ]]; then
+                        _kdiag_resource_names "$tcanon"
+                    else
+                        _arguments -C \
+                            "1: :(${inspect_kinds[*]})" \
+                            $troubleshoot_flags
                     fi
                     ;;
                 diff)

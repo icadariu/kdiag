@@ -69,15 +69,16 @@ integration tests) with:
 - A deployment (`app=test-app`) for label-selector tests.
 - A static pod `kdiag-static` for single-pod tests.
 - A crashing pod to exercise terminated/waiting container states.
-- `kdiag-unschedulable` for `inspect pod --troubleshoot` scheduling tests.
+- `kdiag-unschedulable` for `kdiag troubleshoot pod` scheduling tests.
 
 `test/fixtures/scenarios.yaml` is a separate manual-testing playground (NOT used
 by integration tests) with `kdiag-scheduling` / `kdiag-runtime` /
 `kdiag-workloads` namespaces of healthy + deliberately-broken resources for
-exercising `--troubleshoot` by hand.
+exercising `kdiag troubleshoot` by hand.
 
-`--troubleshoot` is a universal `inspect` view handled centrally in the
-`RunInspect` dispatcher (like `--path`): `internal/cmd/inspect_troubleshoot.go`
-orchestrates and renders; pure diagnostics live in `internal/kube/diagnose.go`
-(runtime/node) and `internal/kube/schedule.go` (scheduling predicates), both
-unit-tested.
+`kdiag troubleshoot` is its own top-level command (dispatcher in `main.go`):
+`internal/cmd/troubleshoot.go` dispatches to kind-specific handlers and
+`internal/cmd/troubleshoot_report.go` orchestrates rendering; pure diagnostics
+live in `internal/kube/diagnose.go` (runtime/node) and `internal/kube/schedule.go`
+(scheduling predicates), both unit-tested. The `--ai` flag seam lives in
+`internal/ai/`.
