@@ -29,13 +29,11 @@ func runInspectReplicaSet(args []string)  { runWorkload("rs", "ReplicaSet", args
 func runWorkload(short, label string, args []string) {
 	fs := pflag.NewFlagSet("inspect "+short, pflag.ExitOnError)
 	k, showResources := commonFlags(fs)
-	var (
-		showAZ bool
-		output string
-	)
+	var showAZ bool
+	wantYAML := func() bool { return false }
 	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
-		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
+		wantYAML = registerYAMLFlag(fs)
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
 		// extractPathArgs rejects --resources with --path explicitly,
@@ -64,12 +62,7 @@ func runWorkload(short, label string, args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
-	switch output {
-	case "", "json", "yaml":
-	default:
-		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
-	}
-	structured := output != ""
+	structured := wantYAML()
 	if len(rest) != 1 {
 		fmt.Fprintf(os.Stderr, "Error: inspect %s requires exactly one <name>\n", short)
 		fs.Usage()
@@ -88,7 +81,7 @@ func runWorkload(short, label string, args []string) {
 		cli.Fatal(err)
 	}
 
-	// --resources/--az are view selectors (mutex); -o/--output composes with any view.
+	// --resources/--az are view selectors (mutex); --yaml/--yml composes with any view.
 	if *showResources && showAZ {
 		fmt.Fprintln(os.Stderr, "Error: --resources and --az are mutually exclusive (both select a view)")
 		os.Exit(1)
@@ -100,7 +93,7 @@ func runWorkload(short, label string, args []string) {
 			cli.Fatal(fmt.Errorf("list pods: %w", err))
 		}
 		if showAZ {
-			emit(output, collectAZ(env, ctx, pods.Items))
+			emit(collectAZ(env, ctx, pods.Items))
 			return
 		}
 		out := workloadInfo{
@@ -121,13 +114,13 @@ func runWorkload(short, label string, args []string) {
 			for _, p := range pods.Items {
 				all = append(all, resourceSliceFor(p)...)
 			}
-			emit(output, all)
+			emit(all)
 			return
 		}
 		for _, p := range pods.Items {
 			out.Pods = append(out.Pods, podInfoFrom(p))
 		}
-		emit(output, out)
+		emit(out)
 		return
 	}
 
@@ -233,12 +226,12 @@ func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string, args
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintf(w, "Usage: kdiag inspect %s [flags] <name>\n", short)
 	fmt.Fprintf(w, "\nShow summary and container state for all pods belonging to a %s.\n", label)
-	fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML document.")
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
-		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive; -o/--output composes with --resources/--az.")
+		fmt.Fprintln(w, "\nViews: --resources, --az, --path are mutually exclusive; --yaml/--yml composes with --resources/--az.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
@@ -249,13 +242,13 @@ func printWorkloadHelp(w io.Writer, fs *pflag.FlagSet, short, label string, args
 		fmt.Fprintf(w, "  kdiag inspect %s --label app=my-app --path '*image*'\n", short)
 	case "resources":
 		fmt.Fprintf(w, "  kdiag inspect %s --resources --namespace my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --resources -o yaml --namespace my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --resources --yaml --namespace my-ns my-%s\n", short, short)
 	case "az":
 		fmt.Fprintf(w, "  kdiag inspect %s --az --namespace my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --az -o yaml --namespace my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --az --yaml --namespace my-ns my-%s\n", short, short)
 	default:
 		fmt.Fprintf(w, "  kdiag inspect %s --namespace my-ns my-%s\n", short, short)
-		fmt.Fprintf(w, "  kdiag inspect %s --resources -o yaml --namespace my-ns my-%s\n", short, short)
+		fmt.Fprintf(w, "  kdiag inspect %s --resources --yaml --namespace my-ns my-%s\n", short, short)
 		fmt.Fprintf(w, "  kdiag inspect %s my-%s --path memory\n", short, short)
 	}
 }

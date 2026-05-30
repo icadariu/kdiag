@@ -26,13 +26,13 @@ func runInspectDeploy(args []string) {
 		selector string
 		showAZ   bool
 		showSpec bool
-		output   string
 	)
+	wantYAML := func() bool { return false }
 	fs.StringVarP(&selector, "label", "l", "", "label selector to identify the deployment")
 	if cli.ViewFlagSeen(args) != "path" {
 		fs.BoolVar(&showAZ, "az", false, "show availability-zone placement")
 		fs.BoolVar(&showSpec, "deployment-spec", false, "print pod template spec (text or structured)")
-		fs.StringVarP(&output, "output", "o", "", "output format: json|yaml (default: text)")
+		wantYAML = registerYAMLFlag(fs)
 	} else {
 		// --resources was registered in commonFlags(); the dispatcher's
 		// extractPathArgs rejects --resources with --path explicitly,
@@ -61,12 +61,7 @@ func runInspectDeploy(args []string) {
 
 	_ = fs.Parse(args)
 	rest := fs.Args()
-	switch output {
-	case "", "json", "yaml":
-	default:
-		cli.Fatal(fmt.Errorf("-o/--output must be 'json' or 'yaml', got %q", output))
-	}
-	structured := output != ""
+	structured := wantYAML()
 
 	// Resolve the deployment: either a positional <name> or --label <selector>
 	// (mirrors `diff rs`). Selector must resolve to exactly one deployment.
@@ -123,7 +118,7 @@ func runInspectDeploy(args []string) {
 		}
 	}
 
-	// --resources/--deployment-spec/--az are view selectors (mutex); -o/--output
+	// --resources/--deployment-spec/--az are view selectors (mutex); --yaml/--yml
 	// composes with any view.
 	if showAZ && (*showResources || showSpec) {
 		fmt.Fprintln(os.Stderr, "Error: --az is mutually exclusive with --resources/--deployment-spec (all select a view)")
@@ -138,19 +133,19 @@ func runInspectDeploy(args []string) {
 			if err != nil {
 				cli.Fatal(fmt.Errorf("list pods: %w", err))
 			}
-			emit(output, collectAZ(env, ctx, pods.Items))
+			emit(collectAZ(env, ctx, pods.Items))
 		case showSpec:
-			emit(output, d.Spec.Template.Spec)
+			emit(d.Spec.Template.Spec)
 		case *showResources:
 			pods := listDeployPods(env, ctx, d)
 			all := make([]containerResourceSlice, 0)
 			for _, p := range pods {
 				all = append(all, resourceSliceFor(p)...)
 			}
-			emit(output, all)
+			emit(all)
 		default:
 			pods := listDeployPods(env, ctx, d)
-			emit(output, deployWorkloadInfo(env, d, pods))
+			emit(deployWorkloadInfo(env, d, pods))
 		}
 		return
 	}
@@ -237,13 +232,13 @@ func printInspectDeployHelp(w io.Writer, fs *pflag.FlagSet, args []string) {
 	seen := cli.ViewFlagSeen(args)
 	fmt.Fprintln(w, "Usage: kdiag inspect deploy [flags] [<deployment-name> | --label <selector>]")
 	fmt.Fprintln(w, "\nShow deployment summary and per-pod container state.")
-	fmt.Fprintln(w, "\nFormat: default is text; -o/--output json|yaml emits a structured document.")
+	fmt.Fprintln(w, "\nFormat: default is text; --yaml/--yml emits a structured YAML document.")
 	switch seen {
 	case "path":
 		fmt.Fprintln(w, "\nView: --path is set. Pass --path <needle> with --namespace/--label only. See `kdiag help yml-path`.")
 	case "":
 		fmt.Fprintln(w, "\nViews: --resources, --deployment-spec, --az, --path are mutually exclusive.")
-		fmt.Fprintln(w, "  -o/--output composes with --resources/--deployment-spec/--az; --path takes only --namespace/--label.")
+		fmt.Fprintln(w, "  --yaml/--yml composes with --resources/--deployment-spec/--az; --path takes only --namespace/--label.")
 	}
 	fmt.Fprintln(w, "\nFlags:")
 	fmt.Fprint(w, cli.FormatFlagsLongOnly(fs))
@@ -263,22 +258,22 @@ func deployExamples(seen string) []string {
 	case "resources":
 		return []string{
 			"  kdiag inspect deploy my-deploy --resources",
-			"  kdiag inspect deploy my-deploy --resources -o yaml",
+			"  kdiag inspect deploy my-deploy --resources --yaml",
 		}
 	case "deployment-spec":
 		return []string{
 			"  kdiag inspect deploy my-deploy --deployment-spec",
-			"  kdiag inspect deploy my-deploy --deployment-spec -o yaml",
+			"  kdiag inspect deploy my-deploy --deployment-spec --yaml",
 		}
 	case "az":
 		return []string{
 			"  kdiag inspect deploy my-deploy --az",
-			"  kdiag inspect deploy my-deploy --az -o yaml",
+			"  kdiag inspect deploy my-deploy --az --yaml",
 		}
 	default:
 		return []string{
 			"  kdiag inspect deploy my-deploy",
-			"  kdiag inspect deploy my-deploy --resources -o yaml",
+			"  kdiag inspect deploy my-deploy --resources --yaml",
 			"  kdiag inspect deploy my-deploy --path memory",
 		}
 	}

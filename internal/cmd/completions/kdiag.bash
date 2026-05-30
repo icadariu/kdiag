@@ -32,7 +32,7 @@ _kdiag_count_positionals() {
     local i
     for ((i=start_idx; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--path|-o|--output|--since)
+            -n|--namespace|-l|--label|--path|--since)
                 # Skip flag and its value
                 ((i++))
                 ;;
@@ -65,7 +65,7 @@ _kdiag_find_kind_idx() {
     local i
     for ((i=2; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -n|--namespace|-l|--label|--path|-o|--output)
+            -n|--namespace|-l|--label|--path)
                 ((i++))
                 ;;
             -*)
@@ -114,10 +114,6 @@ _kdiag() {
         --label|-l|--path)
             return
             ;;
-        -o|--output)
-            COMPREPLY=( $(compgen -W "json yaml" -- "${cur}") )
-            return
-            ;;
     esac
 
     if [[ ${cword} -eq 1 ]]; then
@@ -145,11 +141,11 @@ _kdiag() {
     local inspect_flags
     case "${view_seen}" in
         path)       inspect_flags="${shared_flags} --path" ;;
-        resources)  inspect_flags="${shared_flags} --resources --az --output -o" ;;
-        spec)       inspect_flags="${shared_flags} --deployment-spec --output -o" ;;
-        az)         inspect_flags="${shared_flags} --az --output -o" ;;
-        pods)       inspect_flags="${shared_flags} --pods --output -o" ;;
-        *)          inspect_flags="${shared_flags} --resources --az --deployment-spec --pods --output -o --path" ;;
+        resources)  inspect_flags="${shared_flags} --resources --az --yaml --yml" ;;
+        spec)       inspect_flags="${shared_flags} --deployment-spec --yaml --yml" ;;
+        az)         inspect_flags="${shared_flags} --az --yaml --yml" ;;
+        pods)       inspect_flags="${shared_flags} --pods --yaml --yml" ;;
+        *)          inspect_flags="${shared_flags} --resources --az --deployment-spec --pods --yaml --yml --path" ;;
     esac
 
     case "${cmd}" in

@@ -340,7 +340,7 @@ func TestPrintInspectUsage_NoViewShowsAll(t *testing.T) {
 	var b bytes.Buffer
 	PrintInspectUsage(&b, nil)
 	out := b.String()
-	for _, flag := range []string{"--path", "--output", "--resources", "--deployment-spec", "--az"} {
+	for _, flag := range []string{"--path", "--yaml", "--resources", "--deployment-spec", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}
@@ -354,7 +354,7 @@ func TestPrintInspectUsage_FilteredByPath(t *testing.T) {
 	if !strings.Contains(out, "  --path") {
 		t.Errorf("output missing flag line for --path:\n%s", out)
 	}
-	for _, flag := range []string{"--output", "--resources", "--deployment-spec", "--az"} {
+	for _, flag := range []string{"--yaml", "--resources", "--deployment-spec", "--az"} {
 		if strings.Contains(out, "  "+flag) {
 			t.Errorf("output unexpectedly contains flag line for %q:\n%s", flag, out)
 		}
@@ -366,7 +366,7 @@ func TestPrintInspectUsage_FilteredByResources(t *testing.T) {
 	PrintInspectUsage(&b, []string{"--resources"})
 	out := b.String()
 	// These flags should have their own option lines
-	for _, flag := range []string{"--resources", "--output", "--az"} {
+	for _, flag := range []string{"--resources", "--yaml", "--az"} {
 		if !strings.Contains(out, "  "+flag) {
 			t.Errorf("output missing flag line for %q:\n%s", flag, out)
 		}

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -124,9 +123,8 @@ func RunInspect(args []string) {
 func kindIndex(args []string) int {
 	valueFlags := map[string]bool{
 		"--namespace": true, "-n": true,
-		"--label":  true, "-l": true,
-		"--path":   true,
-		"--output": true, "-o": true,
+		"--label": true, "-l": true,
+		"--path":  true,
 	}
 	for i := 0; i < len(args); i++ {
 		if valueFlags[args[i]] {
@@ -204,12 +202,8 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 	if strings.TrimSpace(needle) == "" {
 		cli.Fatal(fmt.Errorf("--path requires a non-empty value"))
 	}
-	switch {
-	case unknown == "--output" || strings.HasPrefix(unknown, "--output="),
-		unknown == "-o" || strings.HasPrefix(unknown, "-o="),
-		unknown == "--resources",
-		unknown == "--deployment-spec",
-		unknown == "--az":
+	switch unknown {
+	case "--yaml", "--yml", "--resources", "--deployment-spec", "--az":
 		cli.Fatal(fmt.Errorf(
 			"--path is mutually exclusive with %s (each selects a view). "+
 				"Drop one of them, or run `kdiag inspect <kind> -h` for usage.", unknown))
@@ -217,7 +211,7 @@ func extractPathArgs(handlerArgs []string) (needle, name, selector, ns string, o
 	if unknown != "" {
 		cli.Fatal(fmt.Errorf(
 			"--path: unknown flag %q (only -n/--namespace and -l/--label compose with --path; "+
-				"-o/--output, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
+				"--yaml/--yml, --resources, --deployment-spec, --az are mutually exclusive)", unknown))
 	}
 	if len(rest) > 1 {
 		cli.Fatal(fmt.Errorf("inspect accepts only one name argument, got %d", len(rest)))
@@ -242,6 +236,18 @@ func commonFlags(fs *pflag.FlagSet) (*kube.KubeFlags, *bool) {
 	fs.StringVarP(&k.Namespace, "namespace", "n", "", "namespace (defaults to current context)")
 	fs.BoolVar(&showResources, "resources", false, "show resource requests/limits")
 	return &k, &showResources
+}
+
+// registerYAMLFlag wires the structured-output flag onto fs: --yaml with --yml
+// as an accepted alias (hidden from help to avoid listing the same switch
+// twice). It returns a func reporting whether YAML output was requested.
+// kdiag only emits YAML for structured output; the default is text.
+func registerYAMLFlag(fs *pflag.FlagSet) func() bool {
+	var asYAML, asYML bool
+	fs.BoolVar(&asYAML, "yaml", false, "emit YAML instead of text (alias: --yml)")
+	fs.BoolVar(&asYML, "yml", false, "")
+	_ = fs.MarkHidden("yml")
+	return func() bool { return asYAML || asYML }
 }
 
 // inspectPodObject renders the pod-level summary (Pod: <name>, Node, Pod IP,
@@ -343,35 +349,15 @@ func dashIfEmpty(s string) string {
 	return s
 }
 
-// emitYAML marshals v to YAML on stdout. Used wherever `-o yaml` is set
+// emit marshals v to YAML on stdout. Used wherever --yaml/--yml is set
 // (alone or combined with --resources / --deployment-spec) to produce
-// stdout that is valid YAML (yq-pipeable, no banners).
-func emitYAML(v any) {
+// stdout that is valid YAML (yq-pipeable, no banners). kdiag emits YAML only.
+func emit(v any) {
 	y, err := yaml.Marshal(v)
 	if err != nil {
 		cli.Fatal(fmt.Errorf("marshal yaml: %w", err))
 	}
 	fmt.Print(string(y))
-}
-
-// emitJSON marshals v to indented JSON on stdout. Used wherever `-o json`
-// is set. Two-space indent matches kubectl's `-o json` style.
-func emitJSON(v any) {
-	j, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		cli.Fatal(fmt.Errorf("marshal json: %w", err))
-	}
-	fmt.Println(string(j))
-}
-
-// emit dispatches v to the right marshaller based on -o/--output.
-// Only called once the caller has verified output is "json" or "yaml".
-func emit(output string, v any) {
-	if output == "json" {
-		emitJSON(v)
-		return
-	}
-	emitYAML(v)
 }
 
 // hasFlag reports whether name appears in args either as a bare token
